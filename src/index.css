@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #09090b;
+  --color-surface: rgba(255, 255, 255, 0.06);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-primary: #8b5cf6;
+  --color-primary-strong: #7c3aed;
+  --color-text: #f4f4f5;
+  --color-text-dim: #a1a1aa;
+  --space-touch: 44px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 font-body antialiased;
+  overscroll-behavior: none;
+}
+
+.glass {
+  background: rgba(24, 24, 27, 0.72);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--color-border);
+}
+
+.touch-target {
+  min-width: var(--space-touch);
+  min-height: var(--space-touch);
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.35);
+  border-radius: 8px;
+}
+
+input[type='range'].seek {
+  @apply w-full h-8 cursor-pointer appearance-none bg-transparent;
+}
+input[type='range'].seek::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #8b5cf6 var(--fill, 0%), rgba(255, 255, 255, 0.14) var(--fill, 0%));
+}
+input[type='range'].seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid #8b5cf6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
