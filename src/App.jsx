@@ -256,7 +256,7 @@ export default function App() {
       <div className="flex-1 grid grid-cols-12 overflow-hidden">
         <main className="col-span-12 md:col-span-7 xl:col-span-8 h-full overflow-y-auto p-3 md:p-6 min-h-0 flex flex-col gap-3">
           <header className="flex items-center gap-3">
-            <img src="/logo.svg" alt="Justify logo" width="44" height="44" loading="eager" className="h-11 w-11 shrink-0 rounded-2xl object-contain" />
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Justify logo" width="44" height="44" loading="eager" className="h-11 w-11 shrink-0 rounded-2xl object-contain" />
             <div>
               <h1 className="font-display text-lg font-bold leading-none">Justify</h1>
               <p className="text-xs text-zinc-400">Offline Music Player • {songs.length} lagu</p>
@@ -309,7 +309,7 @@ export default function App() {
       {isFullscreen && (
         <div role="dialog" aria-modal="true" aria-label="Mode fullscreen" className="fixed inset-0 z-50 overflow-hidden bg-zinc-950/90">
           <img
-            src={current?.coverUrl || '/logo.svg'}
+            src={current?.coverUrl || `${import.meta.env.BASE_URL}logo.svg`}
             alt=""
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 z-0 h-full w-full scale-150 object-cover blur-3xl saturate-200 opacity-60"
@@ -322,7 +322,7 @@ export default function App() {
             <div className="mx-auto my-3 h-1 w-9 rounded-full bg-white/30" aria-hidden="true" />
             <div className="relative mt-2">
               <img
-                src={current?.coverUrl || '/logo.svg'}
+                src={current?.coverUrl || `${import.meta.env.BASE_URL}logo.svg`}
                 alt={current ? `Cover ${current.album}` : 'Cover default'}
                 className="aspect-square w-full rounded-3xl object-cover shadow-2xl shadow-black/80"
               />
@@ -393,7 +393,7 @@ export default function App() {
             <div className="flex flex-col gap-4 md:col-span-5">
               <div className="relative w-full max-w-md self-start">
                 <img
-                  src={current?.coverUrl || '/logo.svg'}
+                  src={current?.coverUrl || `${import.meta.env.BASE_URL}logo.svg`}
                   alt={current ? `Cover ${current.album}` : 'Cover default'}
                   className="aspect-square w-full rounded-3xl object-cover shadow-2xl shadow-black/60"
                 />
