@@ -11,7 +11,7 @@ import { ensureEngine, isDirectMode, setDirectMode, setVolume } from './lib/audi
 import { db, getBlob, getCoverUrl, putBlob, putCover } from './lib/db'
 import { parseLRC } from './lib/lrc'
 import { durationOf, parseFile } from './lib/metadata'
-import { ACCEPT_AUDIO, FALLBACK_COVER, isAudioName, uid } from './lib/utils'
+import { ACCEPT_AUDIO, FALLBACK_COVER, uid } from './lib/utils'
 
 export default function App() {
   const logoSlug = `${import.meta.env.BASE_URL}logo.svg`
@@ -177,85 +177,93 @@ export default function App() {
     }
   })
 
-  const onUpload = async (e) => {
-    const raw = [...(e.target.files ?? [])]
-    e.target.value = ''
-    if (!raw.length) return
-    const files = raw.filter((f) => {
-      const n = f.name.toLowerCase()
-      if (n.endsWith('.lrc')) return true
-      if (isAudioName(f.name)) return true
-      return (f.type || '').startsWith('audio/')
-    })
-    if (!files.length) return
-    setLoading(true)
-    const existing = new Set((await db.songs.toArray()).map((s) => `${s.fileName}|${s.durationMs}`))
-    const lrcByName = new Map(files.filter((f) => f.name.toLowerCase().endsWith('.lrc')).map((f) => [f.name.replace(/\.lrc$/i, '').toLowerCase(), f]))
-    const queue = files.filter((f) => !f.name.toLowerCase().endsWith('.lrc'))
-    setUploadProgress({ active: true, done: 0, total: queue.length, current: '', failed: 0 })
+const onUpload = async (e) => {
+     const raw = [...(e.target.files ?? [])]
+     e.target.value = ''
+     if (!raw.length) return
+     
+     // Define audio extensions set (same as isAudioName but explicit for folder uploads)
+     const AUDIO_EXTS = new Set(['mp3', 'm4a', 'flac', 'aac', 'wav', 'ogg', 'oga', 'opus', 'alac', 'm4b', 'wma', 'aiff', 'aif'])
+     
+     // Separate LRC and audio files by extension
+     const lrcFiles = raw.filter(f => f.name.toLowerCase().endsWith('.lrc'))
+     const audioFiles = raw.filter(f => {
+       const ext = f.name.split('.').pop()?.toLowerCase()
+       return ext && AUDIO_EXTS.has(ext)
+     })
+     
+     if (!audioFiles.length && !lrcFiles.length) return
+     
+     setLoading(true)
+     const existing = new Set((await db.songs.toArray()).map((s) => `${s.fileName}|${s.durationMs}`))
+     const lrcByName = new Map(lrcFiles.map(f => [f.name.replace(/\.lrc$/i, '').toLowerCase(), f]))
+     
+     // We only process audioFiles; LRCs are attached later by matching base name
+     const queue = audioFiles
+     setUploadProgress({ active: true, done: 0, total: queue.length, current: '', failed: 0 })
 
-    const BATCH = 10
-    const yieldFrame = () => new Promise((r) => setTimeout(r, 16))
+     const BATCH = 10
+     const yieldFrame = () => new Promise((r) => setTimeout(r, 16))
 
-    for (let i = 0; i < queue.length; i += BATCH) {
-      const batch = queue.slice(i, i + BATCH)
-      for (const file of batch) {
-        const key = `${file.name}|${file.size}`
-        if (existing.has(key)) {
-          setUploadProgress((s) => ({ ...s, done: s.done + 1, current: file.name }))
-          continue
-        }
-        existing.add(key)
-        let blobUrl = ''
-        try {
-          setUploadProgress((s) => ({ ...s, current: file.name }))
-          const meta = await parseFile(file)
-          const audioKey = `audio-${uid()}`
-          await putBlob(audioKey, file)
-          let coverKey = meta.coverKey
-          if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
-          blobUrl = URL.createObjectURL(file)
-          const durationMs = await durationOf(blobUrl)
-          URL.revokeObjectURL(blobUrl)
-          const songId = uid()
-          const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
-          if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
-          const artistId = uid()
-          const albumId = uid()
-          await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
-            if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
-            if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
-            await db.songs.add({
-              id: songId,
-              title: meta.title,
-              artist: meta.artist,
-              artistId,
-              album: meta.album,
-              albumId,
-              genre: meta.genre,
-              year: meta.year,
-              durationMs,
-              audioKey,
-              coverKey,
-              fileName: file.name,
-              format: meta.format,
-              sampleRate: meta.sampleRate,
-              bitDepth: meta.bitDepth
-            })
-          })
-        } catch (err) {
-          console.warn('Upload failed for', file.name, err)
-          if (blobUrl) URL.revokeObjectURL(blobUrl)
-          setUploadProgress((s) => ({ ...s, failed: s.failed + 1 }))
-        }
-        setUploadProgress((s) => ({ ...s, done: s.done + 1 }))
-        await tick()
-      }
-      await yieldFrame()
-    }
-    setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
-    await refresh()
-  }
+     for (let i = 0; i < queue.length; i += BATCH) {
+       const batch = queue.slice(i, i + BATCH)
+       for (const file of batch) {
+         const key = `${file.name}|${file.size}`
+         if (existing.has(key)) {
+           setUploadProgress((s) => ({ ...s, done: s.done + 1, current: file.name }))
+           continue
+         }
+         existing.add(key)
+         let blobUrl = ''
+         try {
+           setUploadProgress((s) => ({ ...s, current: file.name }))
+           const meta = await parseFile(file)
+           const audioKey = `audio-${uid()}`
+           await putBlob(audioKey, file)
+           let coverKey = meta.coverKey
+           if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
+           blobUrl = URL.createObjectURL(file)
+           const durationMs = await durationOf(blobUrl)
+           URL.revokeObjectURL(blobUrl)
+           const songId = uid()
+           const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
+           if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
+           const artistId = uid()
+           const albumId = uid()
+           await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
+             if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
+             if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
+             await db.songs.add({
+               id: songId,
+               title: meta.title,
+               artist: meta.artist,
+               artistId,
+               album: meta.album,
+               albumId,
+               genre: meta.genre,
+               year: meta.year,
+               durationMs,
+               audioKey,
+               coverKey,
+               fileName: file.name,
+               format: meta.format,
+               sampleRate: meta.sampleRate,
+               bitDepth: meta.bitDepth
+             })
+           })
+         } catch (err) {
+           console.warn('Upload failed for', file.name, err)
+           if (blobUrl) URL.revokeObjectURL(blobUrl)
+           setUploadProgress((s) => ({ ...s, failed: s.failed + 1 }))
+         }
+         setUploadProgress((s) => ({ ...s, done: s.done + 1 }))
+         await tick()
+       }
+       await yieldFrame()
+     }
+     setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
+     await refresh()
+   }
 
   const onDirectToggle = () => {
     const newDirect = !direct
