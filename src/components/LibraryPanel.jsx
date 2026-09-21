@@ -1,5 +1,6 @@
-import { Disc3, FolderOpen, ListMusic, Music2, Search, Upload } from 'lucide-react'
+import { Disc3, FolderOpen, ListMusic, Music2, RotateCcw, Search, Upload } from 'lucide-react'
 import { useState } from 'react'
+import { resetDatabase } from '../lib/db'
 import { FALLBACK_COVER, formatTime } from '../lib/utils'
 
 export default function LibraryPanel({ songs, playlists, tab, setTab, onPick, onUpload, onUploadFolder, loading, uploadProgress }) {
@@ -99,6 +100,9 @@ export default function LibraryPanel({ songs, playlists, tab, setTab, onPick, on
                 <FolderOpen size={17} /> Tambah Folder
               </button>
             </div>
+            <button onClick={() => { if (confirm('Hapus semua data aplikasi?')) void resetDatabase() }} className="touch-target mt-2 flex h-11 items-center gap-2 rounded-xl px-4 text-xs text-zinc-500 hover:text-red-400 active:scale-[.98]">
+              <RotateCcw size={14} /> Reset App Data
+            </button>
           </div>
         )}
       </div>

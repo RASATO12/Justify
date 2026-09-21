@@ -219,44 +219,51 @@ const onUpload = async (e) => {
            setUploadProgress((s) => ({ ...s, done: s.done + 1, current: file.name }))
            continue
          }
-         existingNames.add(file.name)
-         let blobUrl = ''
-         try {
-           setUploadProgress((s) => ({ ...s, current: file.name }))
-            const meta = await withTimeout(parseFile(file, { withCover: false }), 10000)
-            const audioKey = `audio-${uid()}`
-            await putBlob(audioKey, file)
-            const coverKey = ''
-           blobUrl = URL.createObjectURL(file)
-           const durationMs = await withTimeout(durationOf(blobUrl), 8000)
-           URL.revokeObjectURL(blobUrl)
-           const songId = uid()
-           const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
-           if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
-           const artistId = uid()
-           const albumId = uid()
-           await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
-             if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
-             if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
-             await db.songs.add({
-               id: songId,
-               title: meta.title,
-               artist: meta.artist,
-               artistId,
-               album: meta.album,
-               albumId,
-               genre: meta.genre,
-               year: meta.year,
-               durationMs,
-               audioKey,
-               coverKey,
-               fileName: file.name,
-               format: meta.format,
-               sampleRate: meta.sampleRate,
-               bitDepth: meta.bitDepth
-             })
-           })
-         } catch (err) {
+          existingNames.add(file.name)
+          let blobUrl = ''
+          try {
+            if (!(file instanceof Blob) || !file.size) throw new Error('Invalid file blob')
+            setUploadProgress((s) => ({ ...s, current: file.name }))
+             const meta = await withTimeout(parseFile(file, { withCover: false }), 10000)
+             const audioKey = `audio-${uid()}`
+             await putBlob(audioKey, file)
+             const coverKey = ''
+            blobUrl = URL.createObjectURL(file)
+            const durationMs = await withTimeout(durationOf(blobUrl), 8000)
+            URL.revokeObjectURL(blobUrl)
+            blobUrl = ''
+            const songId = uid()
+            const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
+            if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
+            const artistId = uid()
+            const albumId = uid()
+            const saveSong = async () => {
+              await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
+                if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
+                if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
+                await db.songs.add({
+                  title: String(meta.title || file.name),
+                  artist: String(meta.artist || 'Unknown Artist'),
+                  album: String(meta.album || 'Unknown Album'),
+                  fileName: file.name,
+                  durationMs: Number(durationMs) || 0,
+                  audioKey,
+                  coverKey,
+                  genre: meta.genre || '',
+                  year: Number(meta.year) || 0,
+                  format: meta.format || '',
+                  sampleRate: meta.sampleRate || null,
+                  bitDepth: meta.bitDepth || null
+                })
+              })
+            }
+            try {
+              await saveSong()
+            } catch (dbErr) {
+              console.error('[DB SAVE ERROR]', dbErr?.name, dbErr)
+              throw dbErr
+            }
+          } catch (err) {
            if (err?.name === 'QuotaExceededError') console.error('[QUOTA] IndexedDB penuh, skip:', file.name, err)
            else if (err?.name === 'DataError') console.error('[DATA] Record invalid, skip:', file.name, err)
            else console.error('Upload failed for', file.name, err)
