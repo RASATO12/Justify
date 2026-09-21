@@ -1,16 +1,20 @@
 import jsmediatags from 'jsmediatags/dist/jsmediatags.min.js'
 import { uid } from './utils'
 
-const readTag = (file) =>
+const readTagOnce = (blob) =>
   new Promise((resolve) => {
     try {
-      // Slice first 128KB to prevent loading multi-MB files into memory
-      const headerChunk = file.slice(0, 131072)
-      jsmediatags.read(headerChunk, { onSuccess: resolve, onError: () => resolve(null) })
+      jsmediatags.read(blob, { onSuccess: resolve, onError: () => resolve(null) })
     } catch {
       resolve(null)
     }
   })
+
+const readTag = async (file) => {
+  const sliced = await readTagOnce(file.slice(0, 131072))
+  if (sliced) return sliced
+  return readTagOnce(file)
+}
 
 export async function probeFile(file) {
   try {
@@ -66,7 +70,7 @@ async function downscaleCover(blob, max = 512, q = 0.82) {
   }
 }
 
-const withTimeout = (promise, ms = 3000) =>
+const withTimeout = (promise, ms = 10000) =>
   Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
@@ -86,14 +90,14 @@ export async function parseFile(file) {
   }
   let coverKey = ''
   let coverUrl = ''
+  let coverBlob = null
   const pic = t.picture
   if (pic?.data) {
     const bytes = new Uint8Array(pic.data)
     const rawBlob = new Blob([bytes], { type: pic.format || 'image/jpeg' })
-    const downscaled = await downscaleCover(rawBlob)
+    coverBlob = await downscaleCover(rawBlob)
     coverKey = `cover-${uid()}`
-    coverUrl = URL.createObjectURL(downscaled)
-    // Don't store raw coverBlob - lazy extraction will use coverKey to fetch from IndexedDB later
+    coverUrl = URL.createObjectURL(coverBlob)
   }
   return {
     title,
@@ -103,6 +107,7 @@ export async function parseFile(file) {
     year: Number(t.year) || 0,
     coverKey,
     coverUrl,
+    coverBlob,
     format: hiRes.format,
     sampleRate: hiRes.sampleRate,
     bitDepth: hiRes.bitDepth

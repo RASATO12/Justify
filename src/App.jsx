@@ -201,7 +201,8 @@ const onUpload = async (e) => {
      if (!audioFiles.length && !lrcFiles.length) return
      
      setLoading(true)
-     const existing = new Set((await db.songs.toArray()).map((s) => `${s.fileName}|${s.durationMs}`))
+     const existing = new Set((await db.songs.toArray()).map((s) => `${s.fileName}|${s.audioKey}`))
+     const existingNames = new Set((await db.songs.toArray()).map((s) => s.fileName))
      const lrcByName = new Map(lrcFiles.map(f => [f.name.replace(/\.lrc$/i, '').toLowerCase(), f]))
      
      // We only process audioFiles; LRCs are attached later by matching base name
@@ -214,22 +215,21 @@ const onUpload = async (e) => {
      for (let i = 0; i < queue.length; i += BATCH) {
        const batch = queue.slice(i, i + BATCH)
        for (const file of batch) {
-         const key = `${file.name}|${file.size}`
-         if (existing.has(key)) {
+         if (existingNames.has(file.name)) {
            setUploadProgress((s) => ({ ...s, done: s.done + 1, current: file.name }))
            continue
          }
-         existing.add(key)
+         existingNames.add(file.name)
          let blobUrl = ''
          try {
            setUploadProgress((s) => ({ ...s, current: file.name }))
-           const meta = await withTimeout(parseFile(file), 3000)
+           const meta = await withTimeout(parseFile(file), 10000)
            const audioKey = `audio-${uid()}`
            await putBlob(audioKey, file)
            let coverKey = meta.coverKey
-           // Skip storing coverBlob during initial scan (lazy artwork extraction)
+           if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
            blobUrl = URL.createObjectURL(file)
-           const durationMs = await withTimeout(durationOf(blobUrl), 3000)
+           const durationMs = await withTimeout(durationOf(blobUrl), 8000)
            URL.revokeObjectURL(blobUrl)
            const songId = uid()
            const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
@@ -258,13 +258,14 @@ const onUpload = async (e) => {
              })
            })
          } catch (err) {
-           console.warn('Upload failed for', file.name, err)
+           console.error('Upload failed for', file.name, err)
            if (blobUrl) URL.revokeObjectURL(blobUrl)
            setUploadProgress((s) => ({ ...s, failed: s.failed + 1 }))
          }
          setUploadProgress((s) => ({ ...s, done: s.done + 1 }))
          await new Promise((r) => setTimeout(r, 10))
        }
+       await refresh()
        await yieldFrame()
      }
      setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
