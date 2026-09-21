@@ -4,7 +4,9 @@ import { uid } from './utils'
 const readTag = (file) =>
   new Promise((resolve) => {
     try {
-      jsmediatags.read(file, { onSuccess: resolve, onError: () => resolve(null) })
+      // Slice first 128KB to prevent loading multi-MB files into memory
+      const headerChunk = file.slice(0, 131072)
+      jsmediatags.read(headerChunk, { onSuccess: resolve, onError: () => resolve(null) })
     } catch {
       resolve(null)
     }
@@ -64,8 +66,14 @@ async function downscaleCover(blob, max = 512, q = 0.82) {
   }
 }
 
+const withTimeout = (promise, ms = 3000) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+  ])
+
 export async function parseFile(file) {
-  const tag = await readTag(file)
+  const tag = await withTimeout(readTag(file))
   const hiRes = await probeFile(file)
   const t = tag?.tags ?? {}
   const base = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
@@ -78,14 +86,14 @@ export async function parseFile(file) {
   }
   let coverKey = ''
   let coverUrl = ''
-  let coverBlob = null
   const pic = t.picture
   if (pic?.data) {
     const bytes = new Uint8Array(pic.data)
     const rawBlob = new Blob([bytes], { type: pic.format || 'image/jpeg' })
-    coverBlob = await downscaleCover(rawBlob)
+    const downscaled = await downscaleCover(rawBlob)
     coverKey = `cover-${uid()}`
-    coverUrl = URL.createObjectURL(coverBlob)
+    coverUrl = URL.createObjectURL(downscaled)
+    // Don't store raw coverBlob - lazy extraction will use coverKey to fetch from IndexedDB later
   }
   return {
     title,
@@ -95,7 +103,6 @@ export async function parseFile(file) {
     year: Number(t.year) || 0,
     coverKey,
     coverUrl,
-    coverBlob,
     format: hiRes.format,
     sampleRate: hiRes.sampleRate,
     bitDepth: hiRes.bitDepth

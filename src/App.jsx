@@ -13,6 +13,12 @@ import { parseLRC } from './lib/lrc'
 import { durationOf, parseFile } from './lib/metadata'
 import { ACCEPT_AUDIO, FALLBACK_COVER, uid } from './lib/utils'
 
+const withTimeout = (promise, ms = 3000) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+  ])
+
 export default function App() {
   const logoSlug = `${import.meta.env.BASE_URL}logo.svg`
   const [songs, setSongs] = useState([])
@@ -202,7 +208,7 @@ const onUpload = async (e) => {
      const queue = audioFiles
      setUploadProgress({ active: true, done: 0, total: queue.length, current: '', failed: 0 })
 
-     const BATCH = 10
+     const BATCH = 3
      const yieldFrame = () => new Promise((r) => setTimeout(r, 16))
 
      for (let i = 0; i < queue.length; i += BATCH) {
@@ -217,13 +223,13 @@ const onUpload = async (e) => {
          let blobUrl = ''
          try {
            setUploadProgress((s) => ({ ...s, current: file.name }))
-           const meta = await parseFile(file)
+           const meta = await withTimeout(parseFile(file), 3000)
            const audioKey = `audio-${uid()}`
            await putBlob(audioKey, file)
            let coverKey = meta.coverKey
-           if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
+           // Skip storing coverBlob during initial scan (lazy artwork extraction)
            blobUrl = URL.createObjectURL(file)
-           const durationMs = await durationOf(blobUrl)
+           const durationMs = await withTimeout(durationOf(blobUrl), 3000)
            URL.revokeObjectURL(blobUrl)
            const songId = uid()
            const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
@@ -257,7 +263,7 @@ const onUpload = async (e) => {
            setUploadProgress((s) => ({ ...s, failed: s.failed + 1 }))
          }
          setUploadProgress((s) => ({ ...s, done: s.done + 1 }))
-         await tick()
+         await new Promise((r) => setTimeout(r, 10))
        }
        await yieldFrame()
      }
