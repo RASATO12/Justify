@@ -44,6 +44,26 @@ export async function probeFile(file) {
   return { format: ['ALAC', 'M4A', 'AAC'].includes(ext) ? 'ALAC/AAC' : ext, sampleRate: null, bitDepth: null, channels: 2 }
 }
 
+async function downscaleCover(blob, max = 512, q = 0.82) {
+  try {
+    if (!blob || !blob.type.startsWith('image/')) return blob
+    const bitmap = await createImageBitmap(blob)
+    let { width, height } = bitmap
+    if (width > max || height > max) {
+      if (width > height) { height = Math.round((height * max) / width); width = max }
+      else { width = Math.round((width * max) / height); height = max }
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    return await new Promise((res) => canvas.toBlob((b) => res(b || blob), 'image/jpeg', q))
+  } catch {
+    return blob
+  }
+}
+
 export async function parseFile(file) {
   const tag = await readTag(file)
   const hiRes = await probeFile(file)
@@ -58,12 +78,14 @@ export async function parseFile(file) {
   }
   let coverKey = ''
   let coverUrl = ''
+  let coverBlob = null
   const pic = t.picture
   if (pic?.data) {
     const bytes = new Uint8Array(pic.data)
-    const blob = new Blob([bytes], { type: pic.format || 'image/jpeg' })
+    const rawBlob = new Blob([bytes], { type: pic.format || 'image/jpeg' })
+    coverBlob = await downscaleCover(rawBlob)
     coverKey = `cover-${uid()}`
-    coverUrl = URL.createObjectURL(blob)
+    coverUrl = URL.createObjectURL(coverBlob)
   }
   return {
     title,
@@ -73,19 +95,22 @@ export async function parseFile(file) {
     year: Number(t.year) || 0,
     coverKey,
     coverUrl,
-    coverBlob: pic?.data ? new Blob([new Uint8Array(pic.data)], { type: pic.format || 'image/jpeg' }) : null,
+    coverBlob,
     format: hiRes.format,
     sampleRate: hiRes.sampleRate,
     bitDepth: hiRes.bitDepth
   }
 }
 
-export function durationOf(blobUrl) {
+export function durationOf(blobUrl, timeoutMs = 8000) {
   return new Promise((resolve) => {
     const a = new Audio()
+    let done = false
+    const finish = (v) => { if (!done) { done = true; a.src=''; resolve(v) } }
+    const t = setTimeout(() => finish(0), timeoutMs)
     a.preload = 'metadata'
-    a.onloadedmetadata = () => resolve((a.duration || 0) * 1000)
-    a.onerror = () => resolve(0)
+    a.onloadedmetadata = () => { clearTimeout(t); finish((a.duration || 0) * 1000) }
+    a.onerror = () => { clearTimeout(t); finish(0) }
     a.src = blobUrl
   })
 }

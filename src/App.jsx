@@ -192,53 +192,66 @@ export default function App() {
     const existing = new Set((await db.songs.toArray()).map((s) => `${s.fileName}|${s.durationMs}`))
     const lrcByName = new Map(files.filter((f) => f.name.toLowerCase().endsWith('.lrc')).map((f) => [f.name.replace(/\.lrc$/i, '').toLowerCase(), f]))
     const queue = files.filter((f) => !f.name.toLowerCase().endsWith('.lrc'))
-    setUploadProgress({ active: true, done: 0, total: queue.length, current: '' })
-    const tick = () => new Promise((r) => setTimeout(r, 0))
-    for (let i = 0; i < queue.length; i++) {
-      const file = queue[i]
-      const key = `${file.name}|${file.size}`
-      if (existing.has(key)) {
-        setUploadProgress({ active: true, done: i + 1, total: queue.length, current: file.name })
-        continue
+    setUploadProgress({ active: true, done: 0, total: queue.length, current: '', failed: 0 })
+
+    const BATCH = 10
+    const yieldFrame = () => new Promise((r) => setTimeout(r, 16))
+
+    for (let i = 0; i < queue.length; i += BATCH) {
+      const batch = queue.slice(i, i + BATCH)
+      for (const file of batch) {
+        const key = `${file.name}|${file.size}`
+        if (existing.has(key)) {
+          setUploadProgress((s) => ({ ...s, done: s.done + 1, current: file.name }))
+          continue
+        }
+        existing.add(key)
+        let blobUrl = ''
+        try {
+          setUploadProgress((s) => ({ ...s, current: file.name }))
+          const meta = await parseFile(file)
+          const audioKey = `audio-${uid()}`
+          await putBlob(audioKey, file)
+          let coverKey = meta.coverKey
+          if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
+          blobUrl = URL.createObjectURL(file)
+          const durationMs = await durationOf(blobUrl)
+          URL.revokeObjectURL(blobUrl)
+          const songId = uid()
+          const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
+          if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
+          const artistId = uid()
+          const albumId = uid()
+          await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
+            if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
+            if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
+            await db.songs.add({
+              id: songId,
+              title: meta.title,
+              artist: meta.artist,
+              artistId,
+              album: meta.album,
+              albumId,
+              genre: meta.genre,
+              year: meta.year,
+              durationMs,
+              audioKey,
+              coverKey,
+              fileName: file.name,
+              format: meta.format,
+              sampleRate: meta.sampleRate,
+              bitDepth: meta.bitDepth
+            })
+          })
+        } catch (err) {
+          console.warn('Upload failed for', file.name, err)
+          if (blobUrl) URL.revokeObjectURL(blobUrl)
+          setUploadProgress((s) => ({ ...s, failed: s.failed + 1 }))
+        }
+        setUploadProgress((s) => ({ ...s, done: s.done + 1 }))
+        await tick()
       }
-      existing.add(key)
-      setUploadProgress({ active: true, done: i, total: queue.length, current: file.name })
-      const meta = await parseFile(file)
-      const audioKey = `audio-${uid()}`
-      await putBlob(audioKey, file)
-      let coverKey = meta.coverKey
-      if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
-      const url = URL.createObjectURL(file)
-      const durationMs = await durationOf(url)
-      URL.revokeObjectURL(url)
-      const songId = uid()
-      const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
-      if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
-      const artistId = uid()
-      const albumId = uid()
-      await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
-        if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
-        if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
-        await db.songs.add({
-          id: songId,
-          title: meta.title,
-          artist: meta.artist,
-          artistId,
-          album: meta.album,
-          albumId,
-          genre: meta.genre,
-          year: meta.year,
-          durationMs,
-          audioKey,
-          coverKey,
-          fileName: file.name,
-          format: meta.format,
-          sampleRate: meta.sampleRate,
-          bitDepth: meta.bitDepth
-        })
-      })
-      setUploadProgress({ active: true, done: i + 1, total: queue.length, current: file.name })
-      await tick()
+      await yieldFrame()
     }
     setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
     await refresh()
