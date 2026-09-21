@@ -224,10 +224,10 @@ const onUpload = async (e) => {
           try {
             if (!(file instanceof Blob) || !file.size) throw new Error('Invalid file blob')
             setUploadProgress((s) => ({ ...s, current: file.name }))
-             const meta = await withTimeout(parseFile(file, { withCover: false }), 10000)
-             const audioKey = `audio-${uid()}`
-             await putBlob(audioKey, file)
-             const coverKey = ''
+            const meta = await withTimeout(parseFile(file, { withCover: false }), 10000)
+            const audioKey = `audio-${uid()}`
+            await putBlob(audioKey, file)
+            const coverKey = ''
             blobUrl = URL.createObjectURL(file)
             const durationMs = await withTimeout(durationOf(blobUrl), 8000)
             URL.revokeObjectURL(blobUrl)
@@ -276,8 +276,10 @@ const onUpload = async (e) => {
        await refresh()
        await yieldFrame()
      }
-     setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
-     await refresh()
+      setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
+      const allSongs = await db.songs.toArray()
+      setSongs(allSongs)
+      await refresh()
    }
 
   const onDirectToggle = () => {
