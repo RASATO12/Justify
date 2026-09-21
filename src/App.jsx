@@ -223,11 +223,10 @@ const onUpload = async (e) => {
          let blobUrl = ''
          try {
            setUploadProgress((s) => ({ ...s, current: file.name }))
-           const meta = await withTimeout(parseFile(file), 10000)
-           const audioKey = `audio-${uid()}`
-           await putBlob(audioKey, file)
-           let coverKey = meta.coverKey
-           if (meta.coverBlob) await putCover(coverKey, meta.coverBlob)
+            const meta = await withTimeout(parseFile(file, { withCover: false }), 10000)
+            const audioKey = `audio-${uid()}`
+            await putBlob(audioKey, file)
+            const coverKey = ''
            blobUrl = URL.createObjectURL(file)
            const durationMs = await withTimeout(durationOf(blobUrl), 8000)
            URL.revokeObjectURL(blobUrl)
@@ -258,7 +257,9 @@ const onUpload = async (e) => {
              })
            })
          } catch (err) {
-           console.error('Upload failed for', file.name, err)
+           if (err?.name === 'QuotaExceededError') console.error('[QUOTA] IndexedDB penuh, skip:', file.name, err)
+           else if (err?.name === 'DataError') console.error('[DATA] Record invalid, skip:', file.name, err)
+           else console.error('Upload failed for', file.name, err)
            if (blobUrl) URL.revokeObjectURL(blobUrl)
            setUploadProgress((s) => ({ ...s, failed: s.failed + 1 }))
          }

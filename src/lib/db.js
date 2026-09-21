@@ -15,7 +15,7 @@ export const putBlob = async (key, blob) => {
   try {
     return await db.blobs.put({ key, blob })
   } catch (e) {
-    console.error('putBlob failed', key, e)
+    console.error('putBlob failed', e?.name, key, e)
     throw e
   }
 }
@@ -26,7 +26,7 @@ export const putCover = async (key, blob) => {
   try {
     return await db.covers.put({ key, blob })
   } catch (e) {
-    console.error('putCover failed', key, e)
+    console.error('putCover failed', e?.name, key, e)
     throw e
   }
 }

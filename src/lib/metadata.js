@@ -76,7 +76,7 @@ const withTimeout = (promise, ms = 10000) =>
     new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
   ])
 
-export async function parseFile(file) {
+export async function parseFile(file, { withCover = true } = {}) {
   const tag = await withTimeout(readTag(file))
   const hiRes = await probeFile(file)
   const t = tag?.tags ?? {}
@@ -92,7 +92,7 @@ export async function parseFile(file) {
   let coverUrl = ''
   let coverBlob = null
   const pic = t.picture
-  if (pic?.data) {
+  if (withCover && pic?.data) {
     const bytes = new Uint8Array(pic.data)
     const rawBlob = new Blob([bytes], { type: pic.format || 'image/jpeg' })
     coverBlob = await downscaleCover(rawBlob)
