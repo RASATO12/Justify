@@ -46,7 +46,7 @@ export default function App() {
 
   useEffect(() => {
     refresh()
-    if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => {})
+    if ('serviceWorker' in navigator) void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {})
   }, [refresh])
 
   useEffect(() => {
