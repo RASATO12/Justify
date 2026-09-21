@@ -8,15 +8,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
+      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'],
       manifest: {
-        name: 'Justify — Offline Music Player',
+        name: 'Justify',
         short_name: 'Justify',
-        description: 'PWA offline music player untuk file audio lokal.',
-        theme_color: '#7c3aed',
-        background_color: '#09090b',
+        description: 'Offline Music Player PWA',
+        theme_color: '#0e0e11',
+        background_color: '#0e0e11',
         display: 'standalone',
-        orientation: 'any',
         scope: '/Justify/',
         start_url: '/Justify/',
         icons: [
@@ -33,7 +32,7 @@ export default defineConfig({
             purpose: 'any'
           },
           {
-            src: '/Justify/icons/icon-512.png',
+            src: '/Justify/icons/maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'
