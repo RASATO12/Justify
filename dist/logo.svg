@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Glassmorphism Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#09090B" stop-opacity="1"/>
+    </radialGradient>
+
+    <!-- Main Waveform Gradient -->
+    <linearGradient id="justifyWave" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="50%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+
+    <!-- Glow Effect for Bit-Perfect Fidelity -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Dark Base Canvas -->
+  <rect width="512" height="512" rx="112" fill="#09090B"/>
+  <rect width="512" height="512" rx="112" fill="url(#bgGlow)"/>
+
+  <!-- Glass Ring Border -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="white" stroke-opacity="0.1" stroke-width="3"/>
+
+  <!-- Equalizer / Waveform 'J' Concept -->
+  <g filter="url(#neonGlow)">
+    <!-- Top Cap / Vinyl Stylus Bar -->
+    <rect x="220" y="120" width="152" height="28" rx="14" fill="url(#justifyWave)"/>
+    
+    <!-- Vertical Soundwave Bars (Stem of J) -->
+    <rect x="304" y="168" width="28" height="150" rx="14" fill="url(#justifyWave)"/>
+    <rect x="344" y="168" width="28" height="100" rx="14" fill="url(#justifyWave)" opacity="0.8"/>
+
+    <!-- Curved Loop Bars (Base of J) -->
+    <rect x="264" y="328" width="28" height="48" rx="14" fill="url(#justifyWave)"/>
+    <rect x="224" y="348" width="28" height="44" rx="14" fill="url(#justifyWave)"/>
+    <rect x="184" y="336" width="28" height="40" rx="14" fill="url(#justifyWave)"/>
+    <rect x="144" y="296" width="28" height="48" rx="14" fill="url(#justifyWave)"/>
+  </g>
+
+  <!-- Bit-Perfect Spark / High-Res Indicator Dot -->
+  <circle cx="358" cy="134" r="7" fill="#06B6D4"/>
+</svg>

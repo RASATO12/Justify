@@ -1,0 +1,249 @@
+{
+  "communities": {
+    "0": [
+      "src_app",
+      "src_app_app",
+      "src_components_bottomnav",
+      "src_components_bottomnav_bottomnav",
+      "src_lib_audio_ensureengine",
+      "src_lib_audio_setdirectmode",
+      "src_lib_audio_setvolume",
+      "src_lib_db",
+      "src_lib_db_db",
+      "src_lib_db_getblob",
+      "src_lib_db_getcoverurl",
+      "src_lib_db_putblob",
+      "src_lib_db_putcover",
+      "src_lib_lrc_parselrc",
+      "src_lib_metadata_durationof",
+      "src_lib_utils_isaudioname",
+      "src_main"
+    ],
+    "1": [
+      "src_components_librarypanel",
+      "src_components_librarypanel_librarypanel",
+      "src_components_playerbar",
+      "src_components_playerbar_btn",
+      "src_components_playerbar_playerbar",
+      "src_components_rightpanel",
+      "src_components_rightpanel_rightpanel",
+      "src_lib_audio_isdirectmode",
+      "src_lib_utils",
+      "src_lib_utils_accept_audio",
+      "src_lib_utils_debounce",
+      "src_lib_utils_fallback_cover",
+      "src_lib_utils_formatrate",
+      "src_lib_utils_formattime"
+    ],
+    "2": [
+      "autoprefixer",
+      "package_devdependencies",
+      "package_devdependencies_autoprefixer",
+      "package_devdependencies_postcss",
+      "package_devdependencies_tailwindcss",
+      "package_devdependencies_vite",
+      "package_devdependencies_vite_plugin_pwa",
+      "package_devdependencies_vitejs_plugin_react",
+      "package_json_tailwindcss",
+      "postcss",
+      "vite",
+      "vite_plugin_pwa",
+      "vitejs_plugin_react"
+    ],
+    "3": [
+      "dexie",
+      "jsmediatags",
+      "lucide_react",
+      "package_dependencies",
+      "package_dependencies_dexie",
+      "package_dependencies_jsmediatags",
+      "package_dependencies_lucide_react",
+      "package_dependencies_react",
+      "package_dependencies_react_dom",
+      "react",
+      "react_dom"
+    ],
+    "4": [
+      "package",
+      "package_name",
+      "package_private",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_dev",
+      "package_scripts_preview",
+      "package_type",
+      "package_version"
+    ],
+    "5": [
+      "src_lib_metadata",
+      "src_lib_metadata_parsefile",
+      "src_lib_metadata_probefile",
+      "src_lib_metadata_readtag",
+      "src_lib_utils_uid"
+    ],
+    "6": [
+      "src_components_lyricspanel",
+      "src_components_lyricspanel_lyricspanel",
+      "src_lib_lrc",
+      "src_lib_lrc_activelyricindex"
+    ],
+    "7": [
+      "src_components_visualizer",
+      "src_components_visualizer_visualizer",
+      "src_lib_audio",
+      "src_lib_audio_getanalyser"
+    ],
+    "8": [
+      "postcss_config"
+    ],
+    "9": [
+      "tailwind_config"
+    ],
+    "10": [
+      "tailwindcss_tailwindcss"
+    ],
+    "11": [
+      "vite_config"
+    ]
+  },
+  "cohesion": {
+    "0": 0.2426470588235294,
+    "1": 0.26373626373626374,
+    "2": 0.15384615384615385,
+    "3": 0.18181818181818182,
+    "4": 0.2222222222222222,
+    "5": 0.7,
+    "6": 0.8333333333333334,
+    "7": 0.8333333333333334,
+    "8": 1.0,
+    "9": 1.0,
+    "10": 1.0,
+    "11": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_app_app",
+      "label": "App()",
+      "degree": 17
+    },
+    {
+      "id": "src_lib_utils_formatrate",
+      "label": "formatRate()",
+      "degree": 7
+    },
+    {
+      "id": "src_lib_utils_formattime",
+      "label": "formatTime()",
+      "degree": 7
+    },
+    {
+      "id": "src_lib_metadata_parsefile",
+      "label": "parseFile()",
+      "degree": 6
+    },
+    {
+      "id": "src_components_playerbar_playerbar",
+      "label": "PlayerBar()",
+      "degree": 5
+    },
+    {
+      "id": "src_lib_audio_isdirectmode",
+      "label": "isDirectMode()",
+      "degree": 5
+    },
+    {
+      "id": "src_lib_utils_uid",
+      "label": "uid()",
+      "degree": 5
+    },
+    {
+      "id": "src_lib_audio_setdirectmode",
+      "label": "setDirectMode()",
+      "degree": 4
+    },
+    {
+      "id": "src_components_lyricspanel_lyricspanel",
+      "label": "LyricsPanel()",
+      "degree": 4
+    },
+    {
+      "id": "src_components_visualizer_visualizer",
+      "label": "Visualizer()",
+      "degree": 4
+    }
+  ],
+  "surprises": [
+    {
+      "source": "App()",
+      "target": "isDirectMode()",
+      "source_files": [
+        "src/App.jsx",
+        "src/lib/audio.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "App()",
+      "target": "parseFile()",
+      "source_files": [
+        "src/App.jsx",
+        "src/lib/metadata.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "App()",
+      "target": "formatRate()",
+      "source_files": [
+        "src/App.jsx",
+        "src/lib/utils.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "App()",
+      "target": "formatTime()",
+      "source_files": [
+        "src/App.jsx",
+        "src/lib/utils.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "App()",
+      "target": "uid()",
+      "source_files": [
+        "src/App.jsx",
+        "src/lib/utils.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `devDependencies` connect `devDependencies` to `package.json`?",
+      "why": "High betweenness centrality (0.095) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `dependencies` connect `dependencies` to `package.json`?",
+      "why": "High betweenness centrality (0.082) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `autoprefixer`, `tailwindcss`, `postcss` to the rest of the system?",
+      "why": "18 weakly-connected nodes found - possible documentation gaps or missing edges."
+    }
+  ]
+}

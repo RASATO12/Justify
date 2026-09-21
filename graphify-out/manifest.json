@@ -1,0 +1,134 @@
+{
+  "package.json": {
+    "mtime": 1789922986.9306555,
+    "seen": 1789923338.1053874,
+    "ast_hash": "fc97708cad146f4d7574071c7cfbd151",
+    "semantic_hash": "fc97708cad146f4d7574071c7cfbd151"
+  },
+  "postcss.config.js": {
+    "mtime": 1789922991.9789536,
+    "seen": 1789923338.1053874,
+    "ast_hash": "734699bacfd7f35e8a4680c0a98a7080",
+    "semantic_hash": "734699bacfd7f35e8a4680c0a98a7080"
+  },
+  "src/App.jsx": {
+    "mtime": 1789935902.2684734,
+    "seen": 1789936054.7896125,
+    "ast_hash": "f7247a1b8af20031cb005a0901084628",
+    "semantic_hash": ""
+  },
+  "src/components/BottomNav.jsx": {
+    "mtime": 1789923059.6725874,
+    "seen": 1789923338.1053874,
+    "ast_hash": "5d2790c6f9f341842b97b1618b5af8d6",
+    "semantic_hash": "5d2790c6f9f341842b97b1618b5af8d6"
+  },
+  "src/components/LibraryPanel.jsx": {
+    "mtime": 1789925523.4423077,
+    "seen": 1789925570.9367962,
+    "ast_hash": "8eca64c3d2011df1c0b1701031f1f612",
+    "semantic_hash": "8eca64c3d2011df1c0b1701031f1f612"
+  },
+  "src/components/LyricsPanel.jsx": {
+    "mtime": 1789935907.7749975,
+    "seen": 1789936054.7896125,
+    "ast_hash": "033116fb32ebfba067f5a73f97277a52",
+    "semantic_hash": ""
+  },
+  "src/components/PlayerBar.jsx": {
+    "mtime": 1789929319.1221924,
+    "seen": 1789930147.5266411,
+    "ast_hash": "7997015d060e7e3294ee3c2baa33e71f",
+    "semantic_hash": "7997015d060e7e3294ee3c2baa33e71f"
+  },
+  "src/components/RightPanel.jsx": {
+    "mtime": 1789927192.1487846,
+    "seen": 1789927437.9655669,
+    "ast_hash": "73578ca6b8cf6e7b8c1522ef25ace9dd",
+    "semantic_hash": "73578ca6b8cf6e7b8c1522ef25ace9dd"
+  },
+  "src/components/Visualizer.jsx": {
+    "mtime": 1789923033.4629326,
+    "seen": 1789923338.1067455,
+    "ast_hash": "99f10b5c61706194db00fc296aa330c7",
+    "semantic_hash": "99f10b5c61706194db00fc296aa330c7"
+  },
+  "src/lib/audio.js": {
+    "mtime": 1789924302.4211092,
+    "seen": 1789925018.2541149,
+    "ast_hash": "60b0a93e395409e17b5b9223638fb97e",
+    "semantic_hash": "60b0a93e395409e17b5b9223638fb97e"
+  },
+  "src/lib/db.js": {
+    "mtime": 1789923013.595271,
+    "seen": 1789923338.1067455,
+    "ast_hash": "1753a8a589cc77baa56461d069c1c2b3",
+    "semantic_hash": "1753a8a589cc77baa56461d069c1c2b3"
+  },
+  "src/lib/lrc.js": {
+    "mtime": 1789923022.90597,
+    "seen": 1789923338.1067455,
+    "ast_hash": "bb30a522893984fe5ebd743f66bad206",
+    "semantic_hash": "bb30a522893984fe5ebd743f66bad206"
+  },
+  "src/lib/metadata.js": {
+    "mtime": 1789924299.549484,
+    "seen": 1789925018.257005,
+    "ast_hash": "504f42b9ed378b7582acfbd916566f87",
+    "semantic_hash": "504f42b9ed378b7582acfbd916566f87"
+  },
+  "src/lib/utils.js": {
+    "mtime": 1789925473.7681692,
+    "seen": 1789925570.942673,
+    "ast_hash": "f3be32f3770d8e0706deb29a544aa91f",
+    "semantic_hash": "f3be32f3770d8e0706deb29a544aa91f"
+  },
+  "src/main.jsx": {
+    "mtime": 1789923089.8381402,
+    "seen": 1789923338.1067455,
+    "ast_hash": "fc0277214d920a0f1c9c5b1c71598f76",
+    "semantic_hash": "fc0277214d920a0f1c9c5b1c71598f76"
+  },
+  "tailwind.config.js": {
+    "mtime": 1789922991.3337214,
+    "seen": 1789923338.1067455,
+    "ast_hash": "3aef22c342f0d14dd5e5ca8e4a62bd52",
+    "semantic_hash": "3aef22c342f0d14dd5e5ca8e4a62bd52"
+  },
+  "vite.config.js": {
+    "mtime": 1789922990.3550491,
+    "seen": 1789923338.1067455,
+    "ast_hash": "c807302d7429adf0892e68e57d3188f5",
+    "semantic_hash": "c807302d7429adf0892e68e57d3188f5"
+  },
+  "AGENTS.md": {
+    "mtime": 1789922291.4916322,
+    "seen": 1789934721.3879309,
+    "ast_hash": "7dcdc1b110d72411ebd7ec706191cc9c",
+    "semantic_hash": ""
+  },
+  "index.html": {
+    "mtime": 1789928365.2320511,
+    "seen": 1789934721.3879309,
+    "ast_hash": "4f8b337fcd498d3707bb8f2d52737c1a",
+    "semantic_hash": ""
+  },
+  "public/icons/icon-192.png": {
+    "mtime": 1789923151.73859,
+    "seen": 1789934721.3879309,
+    "ast_hash": "a91b65188c4fd9e6b615251aeb03fdf0",
+    "semantic_hash": ""
+  },
+  "public/icons/icon-512.png": {
+    "mtime": 1789923151.7460968,
+    "seen": 1789934721.3879309,
+    "ast_hash": "e14eaa69de4abd1c8b044d930e9e0458",
+    "semantic_hash": ""
+  },
+  "public/logo.svg": {
+    "mtime": 1789926164.6206443,
+    "seen": 1789934721.3879309,
+    "ast_hash": "ad6f2b46921220361d71402ef0b1efcd",
+    "semantic_hash": ""
+  }
+}
