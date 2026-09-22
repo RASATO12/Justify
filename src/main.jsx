@@ -9,6 +9,12 @@ if ('serviceWorker' in navigator) {
       void registration.unregister()
     }
   }).catch(() => {})
+  // When an unregistered SW fully releases control, force a network-clean reload
+  // so the stale precached bundle can never serve OPFS-era code again.
+  let reloaded = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!reloaded) { reloaded = true; window.location.reload() }
+  })
 }
 
 async function purgeStaleServiceWorker() {
