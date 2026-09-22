@@ -24,13 +24,6 @@ async function forceResetDatabase() {
       req.onerror = () => resolve(false)
       req.onblocked = () => resolve(false)
     })
-    if ('storage' in navigator && navigator.storage.getDirectory) {
-      try {
-        const root = await navigator.storage.getDirectory()
-        await root.removeEntry('audio_files', { recursive: true })
-        await root.removeEntry('cover_files', { recursive: true })
-      } catch {}
-    }
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations()
       for (const reg of registrations) {
@@ -64,86 +57,6 @@ db.open().catch(async (e) => {
   }
 })
 
-// OPFS: exclusive binary storage. Dexie is only used for lightweight text metadata.
-const opfsRootCache = new Map()
-const opfsDirCache = new Map()
-
-async function getOpfsRoot() {
-  if (!('storage' in navigator) || typeof navigator.storage.getDirectory !== 'function') {
-    throw new Error('OPFS_NOT_SUPPORTED')
-  }
-  try {
-    const root = await navigator.storage.getDirectory()
-    opfsRootCache.set('root', root)
-    return root
-  } catch (err) {
-    opfsRootCache.clear()
-    const root = await navigator.storage.getDirectory()
-    opfsRootCache.set('root', root)
-    return root
-  }
-}
-
-async function getOpfsSubDir(subDirName) {
-  if (opfsDirCache.has(subDirName)) {
-    try {
-      const cachedDir = opfsDirCache.get(subDirName)
-      // Test if handle is still valid by getting name or doing quick check if supported,
-      // or simply let it catch on use.
-      return cachedDir
-    } catch {
-      opfsDirCache.delete(subDirName)
-    }
-  }
-
-  try {
-    const root = await getOpfsRoot()
-    const dir = await root.getDirectoryHandle(subDirName, { create: true })
-    opfsDirCache.set(subDirName, dir)
-    return dir
-  } catch (err) {
-    // If root or subdirectory lookup fails with NotFoundError or stale state, clear caches and retry once from fresh root
-    opfsRootCache.clear()
-    opfsDirCache.clear()
-    const root = await getOpfsRoot()
-    const dir = await root.getDirectoryHandle(subDirName, { create: true })
-    opfsDirCache.set(subDirName, dir)
-    return dir
-  }
-}
-
-async function writeOpfsFile(subDirName, fileName, blob) {
-  let dir = await getOpfsSubDir(subDirName)
-  let fileHandle
-  try {
-    fileHandle = await dir.getFileHandle(fileName, { create: true })
-  } catch (handleErr) {
-    console.warn(`[OPFS] Stale handle or NotFoundError for "${subDirName}/${fileName}", purging cache & retrying...`, handleErr)
-    opfsRootCache.clear()
-    opfsDirCache.clear()
-    dir = await getOpfsSubDir(subDirName)
-    fileHandle = await dir.getFileHandle(fileName, { create: true })
-  }
-  
-  const writable = await fileHandle.createWritable()
-  try {
-    if (typeof blob.stream === 'function') {
-      await blob.stream().pipeTo(writable)
-    } else {
-      const arrayBuffer = await blob.arrayBuffer()
-      await writable.write(arrayBuffer)
-      await writable.close()
-    }
-  } catch (err) {
-    try {
-      if (typeof writable.abort === 'function') {
-        await writable.abort()
-      }
-    } catch {}
-    throw err
-  }
-}
-
 const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   if (base64Str.startsWith('data:')) {
     const res = await fetch(base64Str)
@@ -157,13 +70,22 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   return new Blob([byteArray], { type: defaultType })
 }
 
-async function storeBlobFallback(key, blob) {
-  const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks
+export const putBlob = async (key, blob) => {
+  if (!(blob instanceof Blob)) throw new Error('Invalid blob')
+  const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks for safe IndexedDB storage on mobile
   const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
-  
+
+  const existing = await db.blobs.get(key)
+  if (existing?.isChunked) {
+    for (let i = 0; i < existing.totalChunks; i++) {
+      await db.blobs.delete(`${key}_chunk_${i}`).catch(() => {})
+    }
+  }
+
   await db.blobs.put({
     key,
     totalChunks,
+    size: blob.size,
     type: blob.type || 'audio/mpeg',
     isChunked: true,
     updatedAt: Date.now()
@@ -181,13 +103,48 @@ async function storeBlobFallback(key, blob) {
   }
 }
 
-async function storeCoverFallback(key, blob) {
+export const getBlob = async (key) => {
+  if (!key) return null
+  try {
+    const record = await db.blobs.get(key)
+    if (!record) return null
+    if (record.isChunked) {
+      const chunks = []
+      for (let i = 0; i < record.totalChunks; i++) {
+        const chunkRecord = await db.blobs.get(`${key}_chunk_${i}`)
+        if (!chunkRecord?.data) throw new Error(`Missing chunk ${i} for ${key}`)
+        chunks.push(chunkRecord.data)
+      }
+      return new Blob(chunks, { type: record.type || 'audio/mpeg' })
+    }
+    if (record.blob instanceof Blob) return record.blob
+    if (typeof record.data === 'string') return await base64ToBlob(record.data, record.type || 'audio/mpeg')
+    if (record.data instanceof ArrayBuffer || ArrayBuffer.isView(record.data)) {
+      return new Blob([record.data], { type: record.type || 'audio/mpeg' })
+    }
+    return null
+  } catch (err) {
+    console.error('getBlob lookup failed', err)
+    return null
+  }
+}
+
+export const putCover = async (key, blob) => {
+  if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   const CHUNK_SIZE = 256 * 1024
   const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
-  
+
+  const existing = await db.covers.get(key)
+  if (existing?.isChunked) {
+    for (let i = 0; i < existing.totalChunks; i++) {
+      await db.covers.delete(`${key}_chunk_${i}`).catch(() => {})
+    }
+  }
+
   await db.covers.put({
     key,
     totalChunks,
+    size: blob.size,
     type: blob.type || 'image/jpeg',
     isChunked: true,
     updatedAt: Date.now()
@@ -205,60 +162,6 @@ async function storeCoverFallback(key, blob) {
   }
 }
 
-export const putBlob = async (key, blob) => {
-  if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  try {
-    await writeOpfsFile('audio_files', `${key}.audio`, blob)
-  } catch (err) {
-    console.warn('[OPFS putBlob Failed] Falling back to micro-chunked IndexedDB storage:', err)
-    await storeBlobFallback(key, blob)
-  }
-}
-
-export const getBlob = async (key) => {
-  if (!key) return null
-  try {
-    const dir = await getOpfsSubDir('audio_files')
-    const fileHandle = await dir.getFileHandle(`${key}.audio`, { create: false })
-    const file = await fileHandle.getFile()
-    if (file && file.size > 0) return file
-  } catch {}
-
-  // Read-only legacy Dexie lookup for items imported before OPFS migration
-  try {
-    const record = await db.blobs.get(key)
-    if (!record) return null
-    if (record.blob instanceof Blob) return record.blob
-    if (typeof record.data === 'string') return await base64ToBlob(record.data, record.type || 'audio/mpeg')
-    if (record.isChunked) {
-      const chunks = []
-      for (let i = 0; i < record.totalChunks; i++) {
-        const chunkRecord = await db.blobs.get(`${key}_chunk_${i}`)
-        if (!chunkRecord?.data) throw new Error(`Missing chunk ${i} for ${key}`)
-        chunks.push(chunkRecord.data)
-      }
-      return new Blob(chunks, { type: record.type || 'audio/mpeg' })
-    }
-    if (record.data instanceof ArrayBuffer || ArrayBuffer.isView(record.data)) {
-      return new Blob([record.data], { type: record.type || 'audio/mpeg' })
-    }
-    return null
-  } catch (err) {
-    console.error('getBlob legacy lookup failed', err)
-    return null
-  }
-}
-
-export const putCover = async (key, blob) => {
-  if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  try {
-    await writeOpfsFile('cover_files', `${key}.cover`, blob)
-  } catch (err) {
-    console.warn('[OPFS putCover Failed] Falling back to micro-chunked IndexedDB storage:', err)
-    await storeCoverFallback(key, blob)
-  }
-}
-
 async function reconstructChunkedCover(key, record) {
   const chunks = []
   for (let i = 0; i < record.totalChunks; i++) {
@@ -271,13 +174,6 @@ async function reconstructChunkedCover(key, record) {
 
 export const getCoverUrl = async (key) => {
   if (!key) return ''
-  try {
-    const dir = await getOpfsSubDir('cover_files')
-    const fileHandle = await dir.getFileHandle(`${key}.cover`, { create: false })
-    const file = await fileHandle.getFile()
-    if (file && file.size > 0) return URL.createObjectURL(file)
-  } catch {}
-
   try {
     const r = await db.covers.get(key)
     if (!r) return ''
