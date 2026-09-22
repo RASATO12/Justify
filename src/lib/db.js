@@ -24,6 +24,13 @@ async function forceResetDatabase() {
       req.onerror = () => resolve(false)
       req.onblocked = () => resolve(false)
     })
+    if ('storage' in navigator && navigator.storage.getDirectory) {
+      try {
+        const root = await navigator.storage.getDirectory()
+        await root.removeEntry('audio_files', { recursive: true })
+        await root.removeEntry('cover_files', { recursive: true })
+      } catch {}
+    }
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations()
       for (const reg of registrations) {
@@ -57,39 +64,145 @@ db.open().catch(async (e) => {
   }
 })
 
+// OPFS Helpers with fallback to IndexedDB Base64
+async function getOpfsSubDir(subDirName) {
+  if (!('storage' in navigator && navigator.storage.getDirectory)) {
+    throw new Error('OPFS not supported')
+  }
+  const root = await navigator.storage.getDirectory()
+  return await root.getDirectoryHandle(subDirName, { create: true })
+}
+
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+
+const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
+  if (base64Str.startsWith('data:')) {
+    const res = await fetch(base64Str)
+    return await res.blob()
+  }
+  const byteCharacters = atob(base64Str)
+  const byteArray = new Uint8Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteArray[i] = byteCharacters.charCodeAt(i)
+  }
+  return new Blob([byteArray], { type: defaultType })
+}
+
 export const putBlob = async (key, blob, retries = 2) => {
+  if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
-    if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-    return await db.blobs.put({ key, blob })
-  } catch (e) {
-    console.error('putBlob failed', e?.name, key, e)
-    if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError' || e?.name === 'DataError')) {
-      await new Promise((r) => setTimeout(r, 250))
-      return putBlob(key, blob, retries - 1)
+    const dir = await getOpfsSubDir('audio_files')
+    const fileHandle = await dir.getFileHandle(`${key}.audio`, { create: true })
+    const writable = await fileHandle.createWritable()
+    await writable.write(blob)
+    await writable.close()
+  } catch (err) {
+    console.warn('OPFS putBlob failed, falling back to IndexedDB Base64', err)
+    try {
+      const base64Data = await blobToBase64(blob)
+      await db.transaction('rw', db.blobs, async () => {
+        await db.blobs.put({ key, data: base64Data, type: blob.type || 'audio/mpeg', isChunked: false })
+      })
+    } catch (e) {
+      console.error('Fallback putBlob failed', e?.name, key, e)
+      if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError' || e?.name === 'DataError')) {
+        await new Promise((r) => setTimeout(r, 400))
+        return putBlob(key, blob, retries - 1)
+      }
+      throw e
     }
-    throw e
   }
 }
 
-export const getBlob = async (key) => (await db.blobs.get(key))?.blob
+export const getBlob = async (key) => {
+  if (!key) return null
+  try {
+    const dir = await getOpfsSubDir('audio_files')
+    const fileHandle = await dir.getFileHandle(`${key}.audio`, { create: false })
+    const file = await fileHandle.getFile()
+    if (file && file.size > 0) return file
+  } catch {}
+
+  // Fallback to IndexedDB (Dexie) legacy/Base64 records
+  try {
+    const record = await db.blobs.get(key)
+    if (!record) return null
+    if (record.blob instanceof Blob) return record.blob
+    if (typeof record.data === 'string') return await base64ToBlob(record.data, record.type || 'audio/mpeg')
+    if (record.isChunked) {
+      const chunks = []
+      for (let i = 0; i < record.totalChunks; i++) {
+        const chunkRecord = await db.blobs.get(`${key}_chunk_${i}`)
+        if (!chunkRecord?.data) throw new Error(`Missing chunk ${i} for ${key}`)
+        chunks.push(chunkRecord.data)
+      }
+      return new Blob(chunks, { type: record.type || 'audio/mpeg' })
+    }
+    if (record.data instanceof ArrayBuffer || ArrayBuffer.isView(record.data)) {
+      return new Blob([record.data], { type: record.type || 'audio/mpeg' })
+    }
+    return null
+  } catch (err) {
+    console.error('getBlob fallback failed', err)
+    return null
+  }
+}
 
 export const putCover = async (key, blob, retries = 2) => {
+  if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
-    if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-    return await db.covers.put({ key, blob })
-  } catch (e) {
-    console.error('putCover failed', e?.name, key, e)
-    if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError')) {
-      await new Promise((r) => setTimeout(r, 250))
-      return putCover(key, blob, retries - 1)
+    const dir = await getOpfsSubDir('cover_files')
+    const fileHandle = await dir.getFileHandle(`${key}.cover`, { create: true })
+    const writable = await fileHandle.createWritable()
+    await writable.write(blob)
+    await writable.close()
+  } catch (err) {
+    console.warn('OPFS putCover failed, falling back to IndexedDB Base64', err)
+    try {
+      const base64Data = await blobToBase64(blob)
+      await db.transaction('rw', db.covers, async () => {
+        await db.covers.put({ key, data: base64Data, type: blob.type || 'image/jpeg' })
+      })
+    } catch (e) {
+      console.error('Fallback putCover failed', e?.name, key, e)
+      if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError' || e?.name === 'DataError')) {
+        await new Promise((r) => setTimeout(r, 400))
+        return putCover(key, blob, retries - 1)
+      }
+      throw e
     }
-    throw e
   }
 }
 
 export const getCoverUrl = async (key) => {
-  const r = key && (await db.covers.get(key))
-  return r ? URL.createObjectURL(r.blob) : ''
+  if (!key) return ''
+  try {
+    const dir = await getOpfsSubDir('cover_files')
+    const fileHandle = await dir.getFileHandle(`${key}.cover`, { create: false })
+    const file = await fileHandle.getFile()
+    if (file && file.size > 0) return URL.createObjectURL(file)
+  } catch {}
+
+  try {
+    const r = await db.covers.get(key)
+    if (!r) return ''
+    const blob = r.blob instanceof Blob
+      ? r.blob
+      : typeof r.data === 'string'
+        ? await base64ToBlob(r.data, r.type || 'image/jpeg')
+        : (r.data instanceof ArrayBuffer || ArrayBuffer.isView(r.data))
+          ? new Blob([r.data], { type: r.type || 'image/jpeg' })
+          : null
+    return blob ? URL.createObjectURL(blob) : ''
+  } catch {
+    return ''
+  }
 }
 
 export const resetDatabase = async () => {
