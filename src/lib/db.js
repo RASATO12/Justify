@@ -157,13 +157,61 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   return new Blob([byteArray], { type: defaultType })
 }
 
+async function storeBlobFallback(key, blob) {
+  const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks
+  const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
+  
+  await db.blobs.put({
+    key,
+    totalChunks,
+    type: blob.type || 'audio/mpeg',
+    isChunked: true,
+    updatedAt: Date.now()
+  })
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE
+    const end = Math.min(start + CHUNK_SIZE, blob.size)
+    const chunkBlob = blob.slice(start, end)
+    const chunkArrayBuffer = await chunkBlob.arrayBuffer()
+    await db.blobs.put({
+      key: `${key}_chunk_${i}`,
+      data: chunkArrayBuffer
+    })
+  }
+}
+
+async function storeCoverFallback(key, blob) {
+  const CHUNK_SIZE = 256 * 1024
+  const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
+  
+  await db.covers.put({
+    key,
+    totalChunks,
+    type: blob.type || 'image/jpeg',
+    isChunked: true,
+    updatedAt: Date.now()
+  })
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE
+    const end = Math.min(start + CHUNK_SIZE, blob.size)
+    const chunkBlob = blob.slice(start, end)
+    const chunkArrayBuffer = await chunkBlob.arrayBuffer()
+    await db.covers.put({
+      key: `${key}_chunk_${i}`,
+      data: chunkArrayBuffer
+    })
+  }
+}
+
 export const putBlob = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
     await writeOpfsFile('audio_files', `${key}.audio`, blob)
   } catch (err) {
-    console.error('[OPFS putBlob Error]', { key, error: err, name: err?.name, message: err?.message })
-    throw new Error(`Failed to write audio file to OPFS: ${err?.message || err}`)
+    console.warn('[OPFS putBlob Failed] Falling back to micro-chunked IndexedDB storage:', err)
+    await storeBlobFallback(key, blob)
   }
 }
 
@@ -206,9 +254,19 @@ export const putCover = async (key, blob) => {
   try {
     await writeOpfsFile('cover_files', `${key}.cover`, blob)
   } catch (err) {
-    console.error('[OPFS putCover Error]', { key, error: err, name: err?.name, message: err?.message })
-    throw new Error(`Failed to write cover image to OPFS: ${err?.message || err}`)
+    console.warn('[OPFS putCover Failed] Falling back to micro-chunked IndexedDB storage:', err)
+    await storeCoverFallback(key, blob)
   }
+}
+
+async function reconstructChunkedCover(key, record) {
+  const chunks = []
+  for (let i = 0; i < record.totalChunks; i++) {
+    const chunkRecord = await db.covers.get(`${key}_chunk_${i}`)
+    if (!chunkRecord?.data) throw new Error(`Missing cover chunk ${i} for ${key}`)
+    chunks.push(chunkRecord.data)
+  }
+  return new Blob(chunks, { type: record.type || 'image/jpeg' })
 }
 
 export const getCoverUrl = async (key) => {
@@ -223,13 +281,15 @@ export const getCoverUrl = async (key) => {
   try {
     const r = await db.covers.get(key)
     if (!r) return ''
-    const blob = r.blob instanceof Blob
-      ? r.blob
-      : typeof r.data === 'string'
-        ? await base64ToBlob(r.data, r.type || 'image/jpeg')
-        : (r.data instanceof ArrayBuffer || ArrayBuffer.isView(r.data))
-          ? new Blob([r.data], { type: r.type || 'image/jpeg' })
-          : null
+    const blob = r.isChunked
+      ? await reconstructChunkedCover(key, r)
+      : r.blob instanceof Blob
+        ? r.blob
+        : typeof r.data === 'string'
+          ? await base64ToBlob(r.data, r.type || 'image/jpeg')
+          : (r.data instanceof ArrayBuffer || ArrayBuffer.isView(r.data))
+            ? new Blob([r.data], { type: r.type || 'image/jpeg' })
+            : null
     return blob ? URL.createObjectURL(blob) : ''
   } catch {
     return ''
