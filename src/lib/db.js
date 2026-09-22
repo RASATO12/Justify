@@ -57,24 +57,32 @@ db.open().catch(async (e) => {
   }
 })
 
-export const putBlob = async (key, blob) => {
+export const putBlob = async (key, blob, retries = 2) => {
   try {
     if (!(blob instanceof Blob)) throw new Error('Invalid blob')
     return await db.blobs.put({ key, blob })
   } catch (e) {
     console.error('putBlob failed', e?.name, key, e)
+    if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError' || e?.name === 'DataError')) {
+      await new Promise((r) => setTimeout(r, 250))
+      return putBlob(key, blob, retries - 1)
+    }
     throw e
   }
 }
 
 export const getBlob = async (key) => (await db.blobs.get(key))?.blob
 
-export const putCover = async (key, blob) => {
+export const putCover = async (key, blob, retries = 2) => {
   try {
     if (!(blob instanceof Blob)) throw new Error('Invalid blob')
     return await db.covers.put({ key, blob })
   } catch (e) {
     console.error('putCover failed', e?.name, key, e)
+    if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError')) {
+      await new Promise((r) => setTimeout(r, 250))
+      return putCover(key, blob, retries - 1)
+    }
     throw e
   }
 }
