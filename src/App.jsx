@@ -229,39 +229,48 @@ const onUpload = async (e) => {
           try {
             if (!(file instanceof Blob) || !file.size) throw new Error('Invalid file blob')
             setUploadProgress((s) => ({ ...s, current: file.name }))
-            const meta = await withTimeout(parseFile(file, { withCover: false }), 10000)
-            const audioKey = `audio-${uid()}`
-            await putBlob(audioKey, file)
-            const coverKey = ''
-            blobUrl = URL.createObjectURL(file)
-            const durationMs = await withTimeout(durationOf(blobUrl), 8000)
-            URL.revokeObjectURL(blobUrl)
-            blobUrl = ''
-            const songId = uid()
-            const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
-            if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
-            const artistId = uid()
-            const albumId = uid()
-            const saveSong = async () => {
-              await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
-                if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
-                if (!(await db.albums.where('title').equals(meta.album).first())) await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
-                await db.songs.add({
-                  title: String(meta.title || file.name),
-                  artist: String(meta.artist || 'Unknown Artist'),
-                  album: String(meta.album || 'Unknown Album'),
-                  fileName: file.name,
-                  durationMs: Number(durationMs) || 0,
-                  audioKey,
-                  coverKey,
-                  genre: meta.genre || '',
-                  year: Number(meta.year) || 0,
-                  format: meta.format || '',
-                  sampleRate: meta.sampleRate || null,
-                  bitDepth: meta.bitDepth || null
-                })
-              })
-            }
+             const meta = await withTimeout(parseFile(file, { withCover: true }), 10000)
+             const audioKey = `audio-${uid()}`
+             await putBlob(audioKey, file)
+             let coverKey = ''
+             if (meta.coverBlob && meta.coverKey) {
+               coverKey = meta.coverKey
+               await putCover(coverKey, meta.coverBlob)
+             }
+             blobUrl = URL.createObjectURL(file)
+             const durationMs = await withTimeout(durationOf(blobUrl), 8000)
+             URL.revokeObjectURL(blobUrl)
+             blobUrl = ''
+             const songId = uid()
+             const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
+             if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
+             const artistId = uid()
+             const albumId = uid()
+             const saveSong = async () => {
+               await db.transaction('rw', db.songs, db.artists, db.albums, async () => {
+                 if (!(await db.artists.where('name').equals(meta.artist).first())) await db.artists.add({ id: artistId, name: meta.artist })
+                 const existingAlbum = await db.albums.where('title').equals(meta.album).first()
+                 if (!existingAlbum) {
+                   await db.albums.add({ id: albumId, title: meta.album, artistId, year: meta.year, coverKey })
+                 } else if (!existingAlbum.coverKey && coverKey) {
+                   await db.albums.update(existingAlbum.id, { coverKey })
+                 }
+                 await db.songs.add({
+                   title: String(meta.title || file.name),
+                   artist: String(meta.artist || 'Unknown Artist'),
+                   album: String(meta.album || 'Unknown Album'),
+                   fileName: file.name,
+                   durationMs: Number(durationMs) || 0,
+                   audioKey,
+                   coverKey,
+                   genre: meta.genre || '',
+                   year: Number(meta.year) || 0,
+                   format: meta.format || '',
+                   sampleRate: meta.sampleRate || null,
+                   bitDepth: meta.bitDepth || null
+                 })
+               })
+             }
             try {
               await saveSong()
             } catch (dbErr) {
