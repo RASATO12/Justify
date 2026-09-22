@@ -64,7 +64,7 @@ db.open().catch(async (e) => {
   }
 })
 
-// OPFS Helpers with fallback to IndexedDB Base64
+// OPFS: exclusive binary storage. Dexie is only used for lightweight text metadata.
 async function getOpfsSubDir(subDirName) {
   if (!('storage' in navigator && navigator.storage.getDirectory)) {
     throw new Error('OPFS not supported')
@@ -72,14 +72,6 @@ async function getOpfsSubDir(subDirName) {
   const root = await navigator.storage.getDirectory()
   return await root.getDirectoryHandle(subDirName, { create: true })
 }
-
-const blobToBase64 = (blob) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(blob)
-  })
 
 const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   if (base64Str.startsWith('data:')) {
@@ -94,30 +86,15 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   return new Blob([byteArray], { type: defaultType })
 }
 
-export const putBlob = async (key, blob, retries = 2) => {
+export const putBlob = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  try {
-    const dir = await getOpfsSubDir('audio_files')
-    const fileHandle = await dir.getFileHandle(`${key}.audio`, { create: true })
-    const writable = await fileHandle.createWritable()
-    await writable.write(blob)
-    await writable.close()
-  } catch (err) {
-    console.warn('OPFS putBlob failed, falling back to IndexedDB Base64', err)
-    try {
-      const base64Data = await blobToBase64(blob)
-      await db.transaction('rw', db.blobs, async () => {
-        await db.blobs.put({ key, data: base64Data, type: blob.type || 'audio/mpeg', isChunked: false })
-      })
-    } catch (e) {
-      console.error('Fallback putBlob failed', e?.name, key, e)
-      if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError' || e?.name === 'DataError')) {
-        await new Promise((r) => setTimeout(r, 400))
-        return putBlob(key, blob, retries - 1)
-      }
-      throw e
-    }
-  }
+  // Write strictly to OPFS. Never fall back to Dexie blob storage:
+  // Dexie/IndexedDB cannot persist multi-megabyte FLAC binaries on mobile webviews (DataError/IOError).
+  const dir = await getOpfsSubDir('audio_files')
+  const fileHandle = await dir.getFileHandle(`${key}.audio`, { create: true })
+  const writable = await fileHandle.createWritable()
+  await writable.write(blob)
+  await writable.close()
 }
 
 export const getBlob = async (key) => {
@@ -129,7 +106,7 @@ export const getBlob = async (key) => {
     if (file && file.size > 0) return file
   } catch {}
 
-  // Fallback to IndexedDB (Dexie) legacy/Base64 records
+  // Read-only legacy Dexie lookup for items imported before OPFS migration
   try {
     const record = await db.blobs.get(key)
     if (!record) return null
@@ -149,35 +126,18 @@ export const getBlob = async (key) => {
     }
     return null
   } catch (err) {
-    console.error('getBlob fallback failed', err)
+    console.error('getBlob legacy lookup failed', err)
     return null
   }
 }
 
-export const putCover = async (key, blob, retries = 2) => {
+export const putCover = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  try {
-    const dir = await getOpfsSubDir('cover_files')
-    const fileHandle = await dir.getFileHandle(`${key}.cover`, { create: true })
-    const writable = await fileHandle.createWritable()
-    await writable.write(blob)
-    await writable.close()
-  } catch (err) {
-    console.warn('OPFS putCover failed, falling back to IndexedDB Base64', err)
-    try {
-      const base64Data = await blobToBase64(blob)
-      await db.transaction('rw', db.covers, async () => {
-        await db.covers.put({ key, data: base64Data, type: blob.type || 'image/jpeg' })
-      })
-    } catch (e) {
-      console.error('Fallback putCover failed', e?.name, key, e)
-      if (retries > 0 && (e?.name === 'AbortError' || e?.name === 'TransactionInactiveError' || e?.name === 'DataError')) {
-        await new Promise((r) => setTimeout(r, 400))
-        return putCover(key, blob, retries - 1)
-      }
-      throw e
-    }
-  }
+  const dir = await getOpfsSubDir('cover_files')
+  const fileHandle = await dir.getFileHandle(`${key}.cover`, { create: true })
+  const writable = await fileHandle.createWritable()
+  await writable.write(blob)
+  await writable.close()
 }
 
 export const getCoverUrl = async (key) => {
