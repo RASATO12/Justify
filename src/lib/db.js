@@ -12,6 +12,19 @@ db.version(4).stores({
   covers: 'key'
 })
 
+// v5: dedicated micro-chunk stores (manifest stays in blobs/covers)
+db.version(5).stores({
+  songs: '++id, title, artist, album, fileName',
+  artists: 'id, name',
+  albums: 'id, title, artistId, year',
+  playlists: 'id, name, createdAt, updatedAt',
+  playlist_items: '[playlistId+songId], playlistId, songId, itemOrder',
+  blobs: 'key',
+  covers: 'key',
+  chunks: 'key',
+  cover_chunks: 'key'
+})
+
 async function forceResetDatabase() {
   try {
     if (db.isOpen()) {
@@ -72,12 +85,13 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
 
 export const putBlob = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks for safe IndexedDB storage on mobile
+  const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks
   const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
 
   const existing = await db.blobs.get(key)
   if (existing?.isChunked) {
     for (let i = 0; i < existing.totalChunks; i++) {
+      await db.chunks.delete(`${key}_chunk_${i}`).catch(() => {})
       await db.blobs.delete(`${key}_chunk_${i}`).catch(() => {})
     }
   }
@@ -96,7 +110,7 @@ export const putBlob = async (key, blob) => {
     const end = Math.min(start + CHUNK_SIZE, blob.size)
     const chunkBlob = blob.slice(start, end)
     const chunkArrayBuffer = await chunkBlob.arrayBuffer()
-    await db.blobs.put({
+    await db.chunks.put({
       key: `${key}_chunk_${i}`,
       data: chunkArrayBuffer
     })
@@ -111,7 +125,11 @@ export const getBlob = async (key) => {
     if (record.isChunked) {
       const chunks = []
       for (let i = 0; i < record.totalChunks; i++) {
-        const chunkRecord = await db.blobs.get(`${key}_chunk_${i}`)
+        let chunkRecord = await db.chunks.get(`${key}_chunk_${i}`)
+        if (!chunkRecord?.data) {
+          // fallback to legacy blobs table chunk storage
+          chunkRecord = await db.blobs.get(`${key}_chunk_${i}`)
+        }
         if (!chunkRecord?.data) throw new Error(`Missing chunk ${i} for ${key}`)
         chunks.push(chunkRecord.data)
       }
@@ -137,6 +155,7 @@ export const putCover = async (key, blob) => {
   const existing = await db.covers.get(key)
   if (existing?.isChunked) {
     for (let i = 0; i < existing.totalChunks; i++) {
+      await db.cover_chunks.delete(`${key}_chunk_${i}`).catch(() => {})
       await db.covers.delete(`${key}_chunk_${i}`).catch(() => {})
     }
   }
@@ -155,7 +174,7 @@ export const putCover = async (key, blob) => {
     const end = Math.min(start + CHUNK_SIZE, blob.size)
     const chunkBlob = blob.slice(start, end)
     const chunkArrayBuffer = await chunkBlob.arrayBuffer()
-    await db.covers.put({
+    await db.cover_chunks.put({
       key: `${key}_chunk_${i}`,
       data: chunkArrayBuffer
     })
@@ -165,7 +184,10 @@ export const putCover = async (key, blob) => {
 async function reconstructChunkedCover(key, record) {
   const chunks = []
   for (let i = 0; i < record.totalChunks; i++) {
-    const chunkRecord = await db.covers.get(`${key}_chunk_${i}`)
+    let chunkRecord = await db.cover_chunks.get(`${key}_chunk_${i}`)
+    if (!chunkRecord?.data) {
+      chunkRecord = await db.covers.get(`${key}_chunk_${i}`)
+    }
     if (!chunkRecord?.data) throw new Error(`Missing cover chunk ${i} for ${key}`)
     chunks.push(chunkRecord.data)
   }
