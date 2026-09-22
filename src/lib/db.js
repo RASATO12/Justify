@@ -72,19 +72,44 @@ async function getOpfsRoot() {
   if (!('storage' in navigator) || typeof navigator.storage.getDirectory !== 'function') {
     throw new Error('OPFS_NOT_SUPPORTED')
   }
-  if (!opfsRootCache.has('root')) {
+  try {
     const root = await navigator.storage.getDirectory()
     opfsRootCache.set('root', root)
+    return root
+  } catch (err) {
+    opfsRootCache.clear()
+    const root = await navigator.storage.getDirectory()
+    opfsRootCache.set('root', root)
+    return root
   }
-  return opfsRootCache.get('root')
 }
 
 async function getOpfsSubDir(subDirName) {
-  if (opfsDirCache.has(subDirName)) return opfsDirCache.get(subDirName)
-  const root = await getOpfsRoot()
-  const dir = await root.getDirectoryHandle(subDirName, { create: true })
-  opfsDirCache.set(subDirName, dir)
-  return dir
+  if (opfsDirCache.has(subDirName)) {
+    try {
+      const cachedDir = opfsDirCache.get(subDirName)
+      // Test if handle is still valid by getting name or doing quick check if supported,
+      // or simply let it catch on use.
+      return cachedDir
+    } catch {
+      opfsDirCache.delete(subDirName)
+    }
+  }
+
+  try {
+    const root = await getOpfsRoot()
+    const dir = await root.getDirectoryHandle(subDirName, { create: true })
+    opfsDirCache.set(subDirName, dir)
+    return dir
+  } catch (err) {
+    // If root or subdirectory lookup fails with NotFoundError or stale state, clear caches and retry once from fresh root
+    opfsRootCache.clear()
+    opfsDirCache.clear()
+    const root = await getOpfsRoot()
+    const dir = await root.getDirectoryHandle(subDirName, { create: true })
+    opfsDirCache.set(subDirName, dir)
+    return dir
+  }
 }
 
 async function writeOpfsFile(subDirName, fileName, blob) {
@@ -93,13 +118,13 @@ async function writeOpfsFile(subDirName, fileName, blob) {
   try {
     fileHandle = await dir.getFileHandle(fileName, { create: true })
   } catch (handleErr) {
-    // Stale/invalid directory handle can throw NotFoundError on mobile webviews.
-    // Purge the cache, re-resolve the parent chain from root, then retry once.
-    console.warn(`[OPFS] stale handle for "${subDirName}", re-resolving`, handleErr)
-    opfsDirCache.delete(subDirName)
+    console.warn(`[OPFS] Stale handle or NotFoundError for "${subDirName}/${fileName}", purging cache & retrying...`, handleErr)
+    opfsRootCache.clear()
+    opfsDirCache.clear()
     dir = await getOpfsSubDir(subDirName)
     fileHandle = await dir.getFileHandle(fileName, { create: true })
   }
+  
   const writable = await fileHandle.createWritable()
   try {
     await writable.write(blob)
