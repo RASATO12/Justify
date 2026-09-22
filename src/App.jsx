@@ -224,23 +224,34 @@ const onUpload = async (e) => {
         }
          existingNames.add(file.name)
          let blobUrl = ''
+         let bufferedBlob = null
          try {
            if (!(file instanceof Blob) || !file.size) throw new Error('Invalid file blob')
+           console.log('[Upload] Buffering file into ArrayBuffer:', file.name, file.size)
+           const arrayBuffer = await file.arrayBuffer()
+           bufferedBlob = new Blob([arrayBuffer], { type: file.type || 'audio/mpeg' })
+
            setUploadProgress((s) => ({ ...s, current: file.name }))
-            const meta = await withTimeout(parseFile(file, { withCover: true }), 12000)
+            const meta = await withTimeout(parseFile(bufferedBlob, { withCover: true }), 12000)
             const audioKey = `audio-${uid()}`
-            await putBlob(audioKey, file)
+            console.log('[Upload] Storing audio blob:', audioKey)
+            await putBlob(audioKey, bufferedBlob)
             let coverKey = ''
             if (meta.coverBlob && meta.coverKey) {
               coverKey = meta.coverKey
+              console.log('[Upload] Storing cover blob:', coverKey)
               await putCover(coverKey, meta.coverBlob)
             }
-            blobUrl = URL.createObjectURL(file)
+            blobUrl = URL.createObjectURL(bufferedBlob)
             const durationMs = await withTimeout(durationOf(blobUrl), 8000)
             URL.revokeObjectURL(blobUrl)
             blobUrl = ''
             const lrc = lrcByName.get(file.name.replace(/\.[^.]+$/, '').toLowerCase())
-            if (lrc) await putBlob(`${audioKey}:lrc`, lrc)
+            if (lrc) {
+              const lrcBuffer = await lrc.arrayBuffer()
+              const bufferedLrc = new Blob([lrcBuffer], { type: 'text/plain' })
+              await putBlob(`${audioKey}:lrc`, bufferedLrc)
+            }
             const artistId = uid()
             const albumId = uid()
             const saveSong = async () => {
