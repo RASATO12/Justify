@@ -12,8 +12,21 @@ db.version(4).stores({
   covers: 'key'
 })
 
-// v5: dedicated micro-chunk stores (manifest stays in blobs/covers)
 db.version(5).stores({
+  songs: '++id, title, artist, album, fileName',
+  artists: 'id, name',
+  albums: 'id, title, artistId, year',
+  playlists: 'id, name, createdAt, updatedAt',
+  playlist_items: '[playlistId+songId], playlistId, songId, itemOrder',
+  blobs: 'key',
+  covers: 'key',
+  chunks: 'key',
+  cover_chunks: 'key'
+})
+
+// v6: clean, authoritative schema. All stores declared explicitly so no
+// object store can ever be missing at runtime (root cause of NotFoundError).
+db.version(6).stores({
   songs: '++id, title, artist, album, fileName',
   artists: 'id, name',
   albums: 'id, title, artistId, year',
@@ -56,6 +69,10 @@ async function forceResetDatabase() {
   }
 }
 
+db.on('blocked', () => {
+  console.warn('[DB BLOCKED] Another tab holds an outdated connection. Waiting for it to close...')
+})
+
 db.open().catch(async (e) => {
   console.error('[DB OPEN ERROR]', e?.name, e)
   if (
@@ -63,7 +80,8 @@ db.open().catch(async (e) => {
     e?.name === 'VersionError' ||
     e?.name === 'DatabaseClosedError' ||
     e?.name === 'OpenFailedError' ||
-    e?.name === 'InternalError'
+    e?.name === 'InternalError' ||
+    e?.name === 'NotFoundError'
   ) {
     console.warn('[DB RECOVERY] Critical IndexedDB error encountered. Executing forceful reset & cache clear...')
     await forceResetDatabase()
@@ -83,38 +101,40 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   return new Blob([byteArray], { type: defaultType })
 }
 
+const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks for safe mobile IndexedDB writes
+
 export const putBlob = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  const CHUNK_SIZE = 256 * 1024 // 256KB micro-chunks
   const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
 
+  const staleKeys = []
   const existing = await db.blobs.get(key)
   if (existing?.isChunked) {
-    for (let i = 0; i < existing.totalChunks; i++) {
-      await db.chunks.delete(`${key}_chunk_${i}`).catch(() => {})
-      await db.blobs.delete(`${key}_chunk_${i}`).catch(() => {})
-    }
+    for (let i = 0; i < existing.totalChunks; i++) staleKeys.push(`${key}_chunk_${i}`)
   }
 
-  await db.blobs.put({
-    key,
-    totalChunks,
-    size: blob.size,
-    type: blob.type || 'audio/mpeg',
-    isChunked: true,
-    updatedAt: Date.now()
-  })
-
+  const chunkRecords = []
   for (let i = 0; i < totalChunks; i++) {
     const start = i * CHUNK_SIZE
     const end = Math.min(start + CHUNK_SIZE, blob.size)
-    const chunkBlob = blob.slice(start, end)
-    const chunkArrayBuffer = await chunkBlob.arrayBuffer()
-    await db.chunks.put({
-      key: `${key}_chunk_${i}`,
-      data: chunkArrayBuffer
-    })
+    const chunkArrayBuffer = await blob.slice(start, end).arrayBuffer()
+    chunkRecords.push({ key: `${key}_chunk_${i}`, data: chunkArrayBuffer })
   }
+
+  // Single bulk transaction: manifest + all chunks commit atomically, so a
+  // partial/failed write can never leave dangling chunk references.
+  await db.transaction('rw', db.blobs, db.chunks, async () => {
+    if (staleKeys.length) await db.chunks.bulkDelete(staleKeys).catch(() => {})
+    await db.blobs.put({
+      key,
+      totalChunks,
+      size: blob.size,
+      type: blob.type || 'audio/mpeg',
+      isChunked: true,
+      updatedAt: Date.now()
+    })
+    await db.chunks.bulkPut(chunkRecords)
+  })
 }
 
 export const getBlob = async (key) => {
@@ -122,19 +142,31 @@ export const getBlob = async (key) => {
   try {
     const record = await db.blobs.get(key)
     if (!record) return null
+
     if (record.isChunked) {
+      const chunkKeys = []
+      for (let i = 0; i < record.totalChunks; i++) chunkKeys.push(`${key}_chunk_${i}`)
+      let chunkRecords = await db.chunks.bulkGet(chunkKeys)
+      // Fallback: chunks written before v5 live in the blobs store
+      const missingIdx = chunkRecords.map((c, i) => (c?.data ? -1 : i)).filter((i) => i >= 0)
+      if (missingIdx.length) {
+        const legacy = await db.blobs.bulkGet(missingIdx.map((i) => chunkKeys[i]))
+        legacy.forEach((rec, j) => {
+          if (rec?.data) chunkRecords[missingIdx[j]] = rec
+        })
+      }
       const chunks = []
-      for (let i = 0; i < record.totalChunks; i++) {
-        let chunkRecord = await db.chunks.get(`${key}_chunk_${i}`)
-        if (!chunkRecord?.data) {
-          // fallback to legacy blobs table chunk storage
-          chunkRecord = await db.blobs.get(`${key}_chunk_${i}`)
+      for (let i = 0; i < chunkRecords.length; i++) {
+        const c = chunkRecords[i]
+        if (!c?.data) {
+          console.warn(`[getBlob] Missing chunk ${i} for ${key}; returning null`)
+          return null
         }
-        if (!chunkRecord?.data) throw new Error(`Missing chunk ${i} for ${key}`)
-        chunks.push(chunkRecord.data)
+        chunks.push(c.data)
       }
       return new Blob(chunks, { type: record.type || 'audio/mpeg' })
     }
+
     if (record.blob instanceof Blob) return record.blob
     if (typeof record.data === 'string') return await base64ToBlob(record.data, record.type || 'audio/mpeg')
     if (record.data instanceof ArrayBuffer || ArrayBuffer.isView(record.data)) {
@@ -149,47 +181,55 @@ export const getBlob = async (key) => {
 
 export const putCover = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  const CHUNK_SIZE = 256 * 1024
   const totalChunks = Math.ceil(blob.size / CHUNK_SIZE)
 
+  const staleKeys = []
   const existing = await db.covers.get(key)
   if (existing?.isChunked) {
-    for (let i = 0; i < existing.totalChunks; i++) {
-      await db.cover_chunks.delete(`${key}_chunk_${i}`).catch(() => {})
-      await db.covers.delete(`${key}_chunk_${i}`).catch(() => {})
-    }
+    for (let i = 0; i < existing.totalChunks; i++) staleKeys.push(`${key}_chunk_${i}`)
   }
 
-  await db.covers.put({
-    key,
-    totalChunks,
-    size: blob.size,
-    type: blob.type || 'image/jpeg',
-    isChunked: true,
-    updatedAt: Date.now()
-  })
-
+  const chunkRecords = []
   for (let i = 0; i < totalChunks; i++) {
     const start = i * CHUNK_SIZE
     const end = Math.min(start + CHUNK_SIZE, blob.size)
-    const chunkBlob = blob.slice(start, end)
-    const chunkArrayBuffer = await chunkBlob.arrayBuffer()
-    await db.cover_chunks.put({
-      key: `${key}_chunk_${i}`,
-      data: chunkArrayBuffer
-    })
+    const chunkArrayBuffer = await blob.slice(start, end).arrayBuffer()
+    chunkRecords.push({ key: `${key}_chunk_${i}`, data: chunkArrayBuffer })
   }
+
+  await db.transaction('rw', db.covers, db.cover_chunks, async () => {
+    if (staleKeys.length) await db.cover_chunks.bulkDelete(staleKeys).catch(() => {})
+    await db.covers.put({
+      key,
+      totalChunks,
+      size: blob.size,
+      type: blob.type || 'image/jpeg',
+      isChunked: true,
+      updatedAt: Date.now()
+    })
+    await db.cover_chunks.bulkPut(chunkRecords)
+  })
 }
 
 async function reconstructChunkedCover(key, record) {
+  const chunkKeys = []
+  for (let i = 0; i < record.totalChunks; i++) chunkKeys.push(`${key}_chunk_${i}`)
+  let chunkRecords = await db.cover_chunks.bulkGet(chunkKeys)
+  const missingIdx = chunkRecords.map((c, i) => (c?.data ? -1 : i)).filter((i) => i >= 0)
+  if (missingIdx.length) {
+    const legacy = await db.covers.bulkGet(missingIdx.map((i) => chunkKeys[i]))
+    legacy.forEach((rec, j) => {
+      if (rec?.data) chunkRecords[missingIdx[j]] = rec
+    })
+  }
   const chunks = []
-  for (let i = 0; i < record.totalChunks; i++) {
-    let chunkRecord = await db.cover_chunks.get(`${key}_chunk_${i}`)
-    if (!chunkRecord?.data) {
-      chunkRecord = await db.covers.get(`${key}_chunk_${i}`)
+  for (let i = 0; i < chunkRecords.length; i++) {
+    const c = chunkRecords[i]
+    if (!c?.data) {
+      console.warn(`[getCover] Missing chunk ${i} for ${key}; returning null`)
+      return null
     }
-    if (!chunkRecord?.data) throw new Error(`Missing cover chunk ${i} for ${key}`)
-    chunks.push(chunkRecord.data)
+    chunks.push(c.data)
   }
   return new Blob(chunks, { type: record.type || 'image/jpeg' })
 }

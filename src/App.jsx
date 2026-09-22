@@ -91,7 +91,8 @@ export default function App() {
     setProgress(0)
     setLyricLines([])
     try {
-      const lrc = await (await db.blobs.get(`${song.audioKey}:lrc`))?.blob?.text()
+      const lrcBlob = await getBlob(`${song.audioKey}:lrc`)
+      const lrc = lrcBlob ? await lrcBlob.text() : ''
       if (lrc) setLyricLines(parseLRC(lrc))
     } catch { /* ponytail: tanpa lirik tetap putar */ }
     await a.play()
