@@ -15,10 +15,15 @@ export function getAnalyser() {
   return analyser
 }
 
+export async function resumeAudioContext() {
+  if (ctx && ctx.state === 'suspended') {
+    await ctx.resume()
+  }
+}
+
 export function ensureEngine(audioEl) {
   el = audioEl
   if (directMode) {
-    // Di direct mode, biarkan elemen <audio> murni terhubung langsung ke hardware
     return null
   }
   if (ctx) {
@@ -26,6 +31,7 @@ export function ensureEngine(audioEl) {
     return { ctx, analyser, gain }
   }
   ctx = new (window.AudioContext || window.webkitAudioContext)()
+  if (ctx.state === 'suspended') void ctx.resume()
   src = ctx.createMediaElementSource(el)
   analyser = ctx.createAnalyser()
   analyser.fftSize = 256

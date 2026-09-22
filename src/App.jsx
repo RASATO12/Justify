@@ -6,8 +6,8 @@ import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import RightPanel from './components/RightPanel'
 import Visualizer from './components/Visualizer'
-import { formatRate, formatTime } from './lib/utils'
-import { ensureEngine, isDirectMode, setDirectMode, setVolume } from './lib/audio'
+import { formatRate, formatTime, isAudioName } from './lib/utils'
+import { ensureEngine, isDirectMode, resumeAudioContext, setDirectMode, setVolume } from './lib/audio'
 import { db, getBlob, getCoverUrl, putBlob, putCover } from './lib/db'
 import { parseLRC } from './lib/lrc'
 import { durationOf, parseFile } from './lib/metadata'
@@ -77,6 +77,7 @@ export default function App() {
   }, [repeat])
 
   const pick = async (song) => {
+    await resumeAudioContext()
     const blob = await getBlob(song.audioKey)
     if (!blob) return
     if (urlRef.current) URL.revokeObjectURL(urlRef.current)
@@ -101,6 +102,7 @@ export default function App() {
   }
 
   const toggle = async () => {
+    await resumeAudioContext()
     const a = audio.current
     if (!a?.src) return
     if (!direct) ensureEngine(a)
@@ -185,18 +187,18 @@ export default function App() {
   })
 
 const onUpload = async (e) => {
+     await resumeAudioContext()
      const raw = [...(e.target.files ?? [])]
      e.target.value = ''
      if (!raw.length) return
      
-     // Define audio extensions set (same as isAudioName but explicit for folder uploads)
-     const AUDIO_EXTS = new Set(['mp3', 'm4a', 'flac', 'aac', 'wav', 'ogg', 'oga', 'opus', 'alac', 'm4b', 'wma', 'aiff', 'aif'])
-     
-     // Separate LRC and audio files by extension
+     // Separate LRC and audio files using robust mobile-compatible check (isAudioName + MIME fallback)
      const lrcFiles = raw.filter(f => f.name.toLowerCase().endsWith('.lrc'))
      const audioFiles = raw.filter(f => {
-       const ext = f.name.split('.').pop()?.toLowerCase()
-       return ext && AUDIO_EXTS.has(ext)
+       if (f.name.toLowerCase().endsWith('.lrc')) return false
+       const validExt = isAudioName(f.name)
+       const validMime = !f.type || f.type.startsWith('audio/') || f.type === 'application/octet-stream' || f.type === 'application/x-flac' || f.type === 'video/webm'
+       return (validExt || validMime) && f.size > 0
      })
      
      if (!audioFiles.length && !lrcFiles.length) return
