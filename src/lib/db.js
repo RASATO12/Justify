@@ -127,8 +127,13 @@ async function writeOpfsFile(subDirName, fileName, blob) {
   
   const arrayBuffer = await blob.arrayBuffer()
   const writable = await fileHandle.createWritable()
+  
+  const CHUNK_SIZE = 1024 * 1024 // 1MB per chunk
   try {
-    await writable.write(arrayBuffer)
+    for (let offset = 0; offset < arrayBuffer.byteLength; offset += CHUNK_SIZE) {
+      const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE)
+      await writable.write(chunk)
+    }
     await writable.close()
   } catch (err) {
     try {
