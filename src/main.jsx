@@ -3,7 +3,14 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
-// ponytail: one-time stale SW/cache purge; remove after all clients are on the micro-chunked build.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      void registration.unregister()
+    }
+  }).catch(() => {})
+}
+
 async function purgeStaleServiceWorker() {
   try {
     if ('serviceWorker' in navigator) {
