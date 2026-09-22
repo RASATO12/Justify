@@ -99,49 +99,40 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   return new Blob([byteArray], { type: defaultType })
 }
 
-export const putBlob = async (key, blob) => {
+export async function putBlob(key, blob) {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
-    await db.blobs.put({ key, blob, updatedAt: Date.now() })
+    await db.blobs.put({ key, data: blob, updatedAt: Date.now() })
   } catch (err) {
-    console.error('[putBlob Error]', key, err)
+    console.error('[DB Error] Failed to put blob into Dexie:', err)
     throw err
   }
 }
 
-export const getBlob = async (key) => {
+export async function getBlob(key) {
   if (!key) return null
   try {
     const record = await db.blobs.get(key)
     if (!record) return null
+    if (record.data instanceof Blob) return record.data
     if (record.blob instanceof Blob) return record.blob
-    // Fallback for legacy chunked or base64 records
-    if (record.isChunked) {
-      const chunks = []
-      for (let i = 0; i < record.totalChunks; i++) {
-        let chunkRec = await db.chunks.get(`${key}_chunk_${i}`)
-        if (!chunkRec?.data) chunkRec = await db.blobs.get(`${key}_chunk_${i}`)
-        if (chunkRec?.data) chunks.push(chunkRec.data)
-      }
-      if (chunks.length) return new Blob(chunks, { type: record.type || 'audio/mpeg' })
-    }
     if (typeof record.data === 'string') return await base64ToBlob(record.data, record.type || 'audio/mpeg')
     if (record.data instanceof ArrayBuffer || ArrayBuffer.isView(record.data)) {
       return new Blob([record.data], { type: record.type || 'audio/mpeg' })
     }
     return null
   } catch (err) {
-    console.error('getBlob lookup failed', err)
+    console.error('[DB Error] Failed to get blob from Dexie:', err)
     return null
   }
 }
 
-export const putCover = async (key, blob) => {
+export async function putCover(key, blob) {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
-    await db.covers.put({ key, blob, updatedAt: Date.now() })
+    await db.covers.put({ key, data: blob, updatedAt: Date.now() })
   } catch (err) {
-    console.error('[putCover Error]', key, err)
+    console.error('[DB Error] Failed to put cover into Dexie:', err)
     throw err
   }
 }
@@ -151,18 +142,10 @@ export const getCoverUrl = async (key) => {
   try {
     const r = await db.covers.get(key)
     if (!r) return ''
-    const blob = r.blob instanceof Blob
-      ? r.blob
-      : r.isChunked
-        ? await (async () => {
-            const chunks = []
-            for (let i = 0; i < r.totalChunks; i++) {
-              let c = await db.cover_chunks.get(`${key}_chunk_${i}`)
-              if (!c?.data) c = await db.covers.get(`${key}_chunk_${i}`)
-              if (c?.data) chunks.push(c.data)
-            }
-            return chunks.length ? new Blob(chunks, { type: r.type || 'image/jpeg' }) : null
-          })()
+    const blob = r.data instanceof Blob
+      ? r.data
+      : r.blob instanceof Blob
+        ? r.blob
         : typeof r.data === 'string'
           ? await base64ToBlob(r.data, r.type || 'image/jpeg')
           : (r.data instanceof ArrayBuffer || ArrayBuffer.isView(r.data))
