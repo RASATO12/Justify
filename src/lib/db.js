@@ -2,7 +2,7 @@ import Dexie from 'dexie'
 
 export const db = new Dexie('justify-db')
 
-db.version(3).stores({
+db.version(4).stores({
   songs: '++id, title, artist, album, fileName',
   artists: 'id, name',
   albums: 'id, title, artistId, year',
@@ -12,8 +12,18 @@ db.version(3).stores({
   covers: 'key'
 })
 
-db.open().catch((e) => {
+db.open().catch(async (e) => {
   console.error('[DB OPEN ERROR]', e?.name, e)
+  if (e?.name === 'UpgradeError' || e?.name === 'VersionError' || e?.name === 'DatabaseClosedError' || e?.name === 'OpenFailedError') {
+    console.warn('[DB RECOVERY] Detected corrupted or incompatible schema version. Resetting database...')
+    try {
+      await db.delete()
+      indexedDB.deleteDatabase('justify-db')
+      window.location.reload()
+    } catch (resetErr) {
+      console.error('[DB RECOVERY FAILED]', resetErr)
+    }
+  }
 })
 
 export const putBlob = async (key, blob) => {
