@@ -99,10 +99,26 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
   return new Blob([byteArray], { type: defaultType })
 }
 
+// NotFoundError from IndexedDB means the store/connection went stale (DB deleted
+// mid-session, mobile eviction). Re-open the connection and retry once.
+async function withDbRetry(op) {
+  try {
+    return await op()
+  } catch (err) {
+    if (err?.name === 'NotFoundError' || err?.name === 'DatabaseClosedError') {
+      console.warn('[DB] stale connection detected, re-opening and retrying')
+      db.close()
+      await db.open()
+      return await op()
+    }
+    throw err
+  }
+}
+
 export async function putBlob(key, blob) {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
-    await db.blobs.put({ key, data: blob, updatedAt: Date.now() })
+    await withDbRetry(() => db.blobs.put({ key, data: blob, updatedAt: Date.now() }))
   } catch (err) {
     console.error('[DB Error] Failed to put blob into Dexie:', err)
     throw err
@@ -112,7 +128,7 @@ export async function putBlob(key, blob) {
 export async function getBlob(key) {
   if (!key) return null
   try {
-    const record = await db.blobs.get(key)
+    const record = await withDbRetry(() => db.blobs.get(key))
     if (!record) return null
     if (record.data instanceof Blob) return record.data
     if (record.blob instanceof Blob) return record.blob
@@ -130,7 +146,7 @@ export async function getBlob(key) {
 export async function putCover(key, blob) {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
   try {
-    await db.covers.put({ key, data: blob, updatedAt: Date.now() })
+    await withDbRetry(() => db.covers.put({ key, data: blob, updatedAt: Date.now() }))
   } catch (err) {
     console.error('[DB Error] Failed to put cover into Dexie:', err)
     throw err
