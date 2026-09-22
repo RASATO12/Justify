@@ -125,11 +125,18 @@ async function writeOpfsFile(subDirName, fileName, blob) {
     fileHandle = await dir.getFileHandle(fileName, { create: true })
   }
   
+  const arrayBuffer = await blob.arrayBuffer()
   const writable = await fileHandle.createWritable()
   try {
-    await writable.write(blob)
-  } finally {
+    await writable.write(arrayBuffer)
     await writable.close()
+  } catch (err) {
+    try {
+      if (typeof writable.abort === 'function') {
+        await writable.abort()
+      }
+    } catch {}
+    throw err
   }
 }
 
