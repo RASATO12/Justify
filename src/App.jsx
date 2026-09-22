@@ -32,7 +32,8 @@ export default function App() {
   const [shuffle, setShuffle] = useState(false)
   const [repeat, setRepeat] = useState('off')
   const [lyricLines, setLyricLines] = useState([])
-  const [uploadProgress, setUploadProgress] = useState({ active: false, done: 0, total: 0, current: '' })
+  const [uploadProgress, setUploadProgress] = useState({ active: false, done: 0, total: 0, current: '', failed: 0 })
+  const [isScanning, setIsScanning] = useState(false)
   const audio = useRef(null)
   const fileRef = useRef(null)
   const folderRef = useRef(null)
@@ -201,12 +202,14 @@ const onUpload = async (e) => {
      if (!audioFiles.length && !lrcFiles.length) return
      
      setLoading(true)
+     setIsScanning(true)
      const existing = new Set((await db.songs.toArray()).map((s) => `${s.fileName}|${s.audioKey}`))
      const existingNames = new Set((await db.songs.toArray()).map((s) => s.fileName))
      const lrcByName = new Map(lrcFiles.map(f => [f.name.replace(/\.lrc$/i, '').toLowerCase(), f]))
      
      // We only process audioFiles; LRCs are attached later by matching base name
      const queue = audioFiles
+     try {
      setUploadProgress({ active: true, done: 0, total: queue.length, current: '', failed: 0 })
 
      const BATCH = 3
@@ -276,10 +279,14 @@ const onUpload = async (e) => {
        await refresh()
        await yieldFrame()
      }
-      setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
-      const allSongs = await db.songs.toArray()
-      setSongs(allSongs)
-      await refresh()
+     } finally {
+       setUploadProgress({ active: false, done: queue.length, total: queue.length, current: '' })
+       const allSongs = await db.songs.toArray()
+       setSongs(allSongs)
+       await refresh()
+       setLoading(false)
+       setIsScanning(false)
+     }
    }
 
   const onDirectToggle = () => {

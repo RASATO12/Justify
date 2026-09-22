@@ -6,7 +6,11 @@ import { FALLBACK_COVER, formatTime } from '../lib/utils'
 export default function LibraryPanel({ songs, playlists, tab, setTab, onPick, onUpload, onUploadFolder, loading, uploadProgress }) {
   const [q, setQ] = useState('')
   const list = songs.filter((s) => `${s.title} ${s.artist} ${s.album}`.toLowerCase().includes(q.toLowerCase()))
-  const pct = uploadProgress?.active ? Math.round((uploadProgress.done / Math.max(1, uploadProgress.total)) * 100) : 0
+  const totalFiles = Number(uploadProgress?.total) || 0
+  const doneFiles = Number(uploadProgress?.done) || 0
+  const pct = totalFiles > 0 ? Math.max(0, Math.min(100, Math.round((doneFiles / totalFiles) * 100))) : 0
+  const scanningActive = Boolean(uploadProgress?.active)
+  const currentName = uploadProgress?.current || ''
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2">
@@ -27,16 +31,17 @@ export default function LibraryPanel({ songs, playlists, tab, setTab, onPick, on
           <FolderOpen size={18} /> <span className="hidden sm:inline">Folder</span>
         </button>
       </div>
-      {uploadProgress?.active && (
+      {scanningActive && (
         <div role="status" aria-live="polite" className="mt-2 rounded-xl border border-violet-500/30 bg-violet-600/10 p-3">
           <div className="flex items-center justify-between text-xs font-medium">
-            <span>Menambahkan {uploadProgress.done}/{uploadProgress.total} lagu</span>
+            <span>Menambahkan {doneFiles}/{totalFiles} lagu</span>
             <span className="font-mono text-violet-300">{pct}%</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
             <div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <p className="mt-1 truncate text-xs text-zinc-400">{uploadProgress.current}</p>
+          <p className="mt-1 truncate text-xs text-zinc-400">{currentName || 'Memulai scan...'}</p>
+          {uploadProgress?.failed > 0 && <p className="mt-1 text-xs text-red-400">{uploadProgress.failed} gagal, lanjut scan</p>}
         </div>
       )}
       <div role="tablist" aria-label="Kategori library" className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -57,7 +62,18 @@ export default function LibraryPanel({ songs, playlists, tab, setTab, onPick, on
         ))}
       </div>
       <div className="scroll-thin mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-        {loading ? (
+        {scanningActive && list.length === 0 ? (
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="animate-pulse rounded-2xl border border-white/10 bg-white/5 p-3" aria-hidden="true">
+                <div className="aspect-square rounded-xl bg-zinc-800" />
+                <div className="mt-2 h-4 rounded bg-zinc-800" />
+                <div className="mt-1 h-3 w-2/3 rounded bg-zinc-800" />
+                <p className="mt-2 truncate text-xs text-zinc-500">{currentName || `Memindai file ${doneFiles + 1}...`}</p>
+              </div>
+            ))}
+          </div>
+        ) : loading ? (
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="animate-pulse rounded-2xl border border-white/10 bg-white/5 p-3">
