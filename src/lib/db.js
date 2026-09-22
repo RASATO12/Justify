@@ -65,12 +65,47 @@ db.open().catch(async (e) => {
 })
 
 // OPFS: exclusive binary storage. Dexie is only used for lightweight text metadata.
-async function getOpfsSubDir(subDirName) {
-  if (!('storage' in navigator && navigator.storage.getDirectory)) {
-    throw new Error('OPFS not supported')
+const opfsRootCache = new Map()
+const opfsDirCache = new Map()
+
+async function getOpfsRoot() {
+  if (!('storage' in navigator) || typeof navigator.storage.getDirectory !== 'function') {
+    throw new Error('OPFS_NOT_SUPPORTED')
   }
-  const root = await navigator.storage.getDirectory()
-  return await root.getDirectoryHandle(subDirName, { create: true })
+  if (!opfsRootCache.has('root')) {
+    const root = await navigator.storage.getDirectory()
+    opfsRootCache.set('root', root)
+  }
+  return opfsRootCache.get('root')
+}
+
+async function getOpfsSubDir(subDirName) {
+  if (opfsDirCache.has(subDirName)) return opfsDirCache.get(subDirName)
+  const root = await getOpfsRoot()
+  const dir = await root.getDirectoryHandle(subDirName, { create: true })
+  opfsDirCache.set(subDirName, dir)
+  return dir
+}
+
+async function writeOpfsFile(subDirName, fileName, blob) {
+  let dir = await getOpfsSubDir(subDirName)
+  let fileHandle
+  try {
+    fileHandle = await dir.getFileHandle(fileName, { create: true })
+  } catch (handleErr) {
+    // Stale/invalid directory handle can throw NotFoundError on mobile webviews.
+    // Purge the cache, re-resolve the parent chain from root, then retry once.
+    console.warn(`[OPFS] stale handle for "${subDirName}", re-resolving`, handleErr)
+    opfsDirCache.delete(subDirName)
+    dir = await getOpfsSubDir(subDirName)
+    fileHandle = await dir.getFileHandle(fileName, { create: true })
+  }
+  const writable = await fileHandle.createWritable()
+  try {
+    await writable.write(blob)
+  } finally {
+    await writable.close()
+  }
 }
 
 const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
@@ -88,13 +123,12 @@ const base64ToBlob = async (base64Str, defaultType = 'audio/mpeg') => {
 
 export const putBlob = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  // Write strictly to OPFS. Never fall back to Dexie blob storage:
-  // Dexie/IndexedDB cannot persist multi-megabyte FLAC binaries on mobile webviews (DataError/IOError).
-  const dir = await getOpfsSubDir('audio_files')
-  const fileHandle = await dir.getFileHandle(`${key}.audio`, { create: true })
-  const writable = await fileHandle.createWritable()
-  await writable.write(blob)
-  await writable.close()
+  try {
+    await writeOpfsFile('audio_files', `${key}.audio`, blob)
+  } catch (err) {
+    console.error('[OPFS putBlob Error]', { key, error: err, name: err?.name, message: err?.message })
+    throw new Error(`Failed to write audio file to OPFS: ${err?.message || err}`)
+  }
 }
 
 export const getBlob = async (key) => {
@@ -133,11 +167,12 @@ export const getBlob = async (key) => {
 
 export const putCover = async (key, blob) => {
   if (!(blob instanceof Blob)) throw new Error('Invalid blob')
-  const dir = await getOpfsSubDir('cover_files')
-  const fileHandle = await dir.getFileHandle(`${key}.cover`, { create: true })
-  const writable = await fileHandle.createWritable()
-  await writable.write(blob)
-  await writable.close()
+  try {
+    await writeOpfsFile('cover_files', `${key}.cover`, blob)
+  } catch (err) {
+    console.error('[OPFS putCover Error]', { key, error: err, name: err?.name, message: err?.message })
+    throw new Error(`Failed to write cover image to OPFS: ${err?.message || err}`)
+  }
 }
 
 export const getCoverUrl = async (key) => {
