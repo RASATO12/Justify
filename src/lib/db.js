@@ -125,16 +125,15 @@ async function writeOpfsFile(subDirName, fileName, blob) {
     fileHandle = await dir.getFileHandle(fileName, { create: true })
   }
   
-  const arrayBuffer = await blob.arrayBuffer()
   const writable = await fileHandle.createWritable()
-  
-  const CHUNK_SIZE = 1024 * 1024 // 1MB per chunk
   try {
-    for (let offset = 0; offset < arrayBuffer.byteLength; offset += CHUNK_SIZE) {
-      const chunk = arrayBuffer.slice(offset, offset + CHUNK_SIZE)
-      await writable.write(chunk)
+    if (typeof blob.stream === 'function') {
+      await blob.stream().pipeTo(writable)
+    } else {
+      const arrayBuffer = await blob.arrayBuffer()
+      await writable.write(arrayBuffer)
+      await writable.close()
     }
-    await writable.close()
   } catch (err) {
     try {
       if (typeof writable.abort === 'function') {
