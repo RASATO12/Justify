@@ -1,17 +1,25 @@
-import { House, ListMusic, Search, Settings } from 'lucide-react'
+import { House, Compass, Radio, ListMusic, Search } from 'lucide-react'
 
 export default function BottomNav({ tab, setTab }) {
   const items = [
-    { id: 'songs', label: 'Home', icon: House },
-    { id: 'search', label: 'Cari', icon: Search },
-    { id: 'playlists', label: 'Playlist', icon: ListMusic },
-    { id: 'settings', label: 'Setting', icon: Settings }
+    { id: 'songs', label: 'Listen Now', icon: House },
+    { id: 'browse', label: 'Browse', icon: Compass },
+    { id: 'radio', label: 'Radio', icon: Radio },
+    { id: 'playlists', label: 'Library', icon: ListMusic },
+    { id: 'search', label: 'Search', icon: Search }
   ]
   return (
     <nav aria-label="Navigasi utama" className="glass sticky bottom-0 z-20 flex md:hidden">
       {items.map((t) => (
-        <button key={t.id} onClick={() => setTab(t.id === 'search' ? 'songs' : t.id)} className={`touch-target flex h-16 flex-1 flex-col items-center justify-center gap-1 text-[11px] transition ${tab === t.id || (t.id === 'search' && tab === 'songs') ? 'text-violet-300' : 'text-zinc-400 hover:text-zinc-200 active:text-white'}`}>
-          <t.icon size={21} /> {t.label}
+        <button
+          key={t.id}
+          onClick={() => setTab(t.id)}
+          className={`touch-target flex h-16 flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium transition ${
+            tab === t.id ? 'text-red-500' : 'text-zinc-500 hover:text-zinc-300 active:text-white'
+          }`}
+        >
+          <t.icon size={22} strokeWidth={tab === t.id ? 2.4 : 1.8} fill={tab === t.id ? 'currentColor' : 'none'} />
+          {t.label}
         </button>
       ))}
     </nav>

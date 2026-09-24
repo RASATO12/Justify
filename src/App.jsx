@@ -338,17 +338,25 @@ const onUpload = async (e) => {
       </div>
       <div className="md:hidden">
         {current && (
-          <button onClick={toggle} className="glass mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-2xl p-2 text-left active:bg-white/10">
-            <img src={current.coverUrl || FALLBACK_COVER} alt="" className="h-11 w-11 rounded-xl object-cover" />
-            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{current.title}</span><span className="block truncate text-xs text-zinc-400">{current.artist}</span></span>
-            <span className="touch-target flex h-11 w-11 items-center justify-center rounded-full bg-violet-600 font-bold">{playing ? '❚❚' : '▶'}</span>
-          </button>
+          <div onClick={toggleFullscreen} className="glass mx-3 mb-2 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-2xl p-2.5 text-left active:bg-white/10 cursor-pointer shadow-lg shadow-black/40">
+            <img src={current.coverUrl || FALLBACK_COVER} alt="" className="h-11 w-11 rounded-xl object-cover shadow" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-white">{current.title}</span>
+              <span className="block truncate text-xs text-zinc-400">{current.artist}</span>
+            </span>
+            <button onClick={(e) => { e.stopPropagation(); toggle() }} aria-label={playing ? 'Jeda' : 'Putar'} className="touch-target flex h-11 w-11 items-center justify-center rounded-full text-white active:scale-95">
+              {playing ? <span className="font-bold text-base">❚❚</span> : <span className="font-bold text-base ml-0.5">▶</span>}
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); next() }} aria-label="Berikutnya" className="touch-target flex h-11 w-11 items-center justify-center rounded-full text-white active:scale-95">
+              <SkipForward size={20} fill="currentColor" />
+            </button>
+          </div>
         )}
       </div>
       <audio ref={audio} preload="auto" />
       <input ref={fileRef} type="file" accept={ACCEPT_AUDIO} multiple hidden onChange={onUpload} />
       <input ref={folderRef} type="file" accept={ACCEPT_AUDIO} webkitdirectory="" directory="" multiple hidden onChange={onUpload} />
-      <div className="shrink-0 relative z-30 border-t border-white/10 bg-zinc-900/80 backdrop-blur-xl">
+      <div className="shrink-0 relative z-30 border-t border-white/10 bg-zinc-900/80 backdrop-blur-xl hidden md:block">
       <PlayerBar
         current={current ? { ...current, durationSec: (current.durationMs || 0) / 1000 } : null}
         playing={playing}
